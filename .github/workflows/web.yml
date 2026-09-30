@@ -1,0 +1,78 @@
+# Веб-версия на GitHub Pages: проверка, сборка и публикация при каждом обновлении main.
+# Нужны переменные репозитория (Settings → Secrets and variables → Actions → Variables):
+#   EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, EXPO_PUBLIC_TELEGRAM_BOT (можно пустой).
+# Пока их нет, сайт не публикуется (приложению не к чему подключаться).
+name: Сайт
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/mobile/**', '.github/workflows/web.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx expo lint
+
+      - name: Есть ли адрес сервера
+        id: cfg
+        run: |
+          if [ -z "${{ vars.EXPO_PUBLIC_SUPABASE_URL }}" ]; then
+            echo "::warning::Не задана переменная EXPO_PUBLIC_SUPABASE_URL — сайт не публикуется."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Сборка
+        if: steps.cfg.outputs.ready == 'true'
+        env:
+          WEB_BASE_URL: /${{ github.event.repository.name }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_TELEGRAM_BOT: ${{ vars.EXPO_PUBLIC_TELEGRAM_BOT }}
+        run: |
+          npx expo export --platform web --clear --output-dir dist
+          # Pages не знает про маршруты приложения: любая ссылка вроде /orders/123
+          # отдаёт 404.html, а это то же приложение, которое откроет нужный экран.
+          cp dist/index.html dist/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          path: apps/mobile/dist
+    outputs:
+      ready: ${{ steps.cfg.outputs.ready }}
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

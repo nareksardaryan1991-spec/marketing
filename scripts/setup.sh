@@ -39,6 +39,9 @@ TELEGRAM_BOT_TOKEN=$(ask_secret "Telegram bot token (от @BotFather): ")
 INSTAGRAM_APP_ID=$(ask "Instagram App ID (developers.facebook.com): ")
 INSTAGRAM_APP_SECRET=""
 [ -n "$INSTAGRAM_APP_ID" ] && INSTAGRAM_APP_SECRET=$(ask_secret "Instagram App Secret: ")
+echo "Адрес сайта — куда возвращать после оплаты и подключения Instagram."
+echo "Для GitHub Pages: https://<логин>.github.io (без подпапки)."
+SITE_URL=$(ask "Адрес сайта: ")
 
 NOTIFY_WEBHOOK_SECRET=$(random_secret)
 AUTOPUBLISH_SECRET=$(random_secret)
@@ -52,6 +55,7 @@ secrets=(
 )
 [ -n "$ANTHROPIC_API_KEY" ] && secrets+=("ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
 [ -n "$TELEGRAM_BOT_TOKEN" ] && secrets+=("TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN")
+[ -n "$SITE_URL" ] && secrets+=("APP_RETURN_PREFIXES=marketing://,exp://,http://localhost,${SITE_URL%/}")
 [ -n "$INSTAGRAM_APP_ID" ] && secrets+=("INSTAGRAM_APP_ID=$INSTAGRAM_APP_ID" "INSTAGRAM_APP_SECRET=$INSTAGRAM_APP_SECRET")
 $SUPABASE secrets set "${secrets[@]}"
 

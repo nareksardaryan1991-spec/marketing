@@ -146,6 +146,30 @@ http://127.0.0.1:54323.
 Оплата после установки работает в **тестовом режиме**: вместо банка кнопка
 «Оплатить (тест)».
 
+## Онлайн через GitHub
+
+Код лежит в публичном репозитории на GitHub. При каждом обновлении ветки `main`:
+- **«Сайт»** (`.github/workflows/web.yml`) проверяет приложение, собирает веб-версию и
+  публикует её на GitHub Pages: `https://<логин>.github.io/marketing/`;
+- **«Сервер»** (`.github/workflows/supabase.yml`) прогоняет проверки базы и обновляет
+  базу и серверные функции в Supabase.
+
+Один раз после `./scripts/setup.sh` (на вопрос «Адрес сайта» — `https://<логин>.github.io`)
+заполните в репозитории **Settings → Secrets and variables → Actions**:
+
+| Где | Имя | Откуда |
+|---|---|---|
+| Variables | `EXPO_PUBLIC_SUPABASE_URL` | `apps/mobile/.env.local` |
+| Variables | `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `apps/mobile/.env.local` |
+| Variables | `EXPO_PUBLIC_TELEGRAM_BOT` | `apps/mobile/.env.local` (можно пусто) |
+| Variables | `SUPABASE_PROJECT_REF` | ref проекта Supabase |
+| Secrets | `SUPABASE_ACCESS_TOKEN` | supabase.com/dashboard/account/tokens |
+| Secrets | `SUPABASE_DB_PASSWORD` | пароль базы |
+
+В Supabase: **Authentication → URL Configuration → Site URL** — адрес сайта
+`https://<логин>.github.io/marketing/`, иначе ссылки из писем будут вести на localhost.
+Пока переменных нет, задачи только проверяют код и ничего не публикуют.
+
 ## Заказы и оплата
 
 Клиент выбирает площадки — **Instagram, Facebook, TikTok** — и для каждой отдельно
