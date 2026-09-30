@@ -51,7 +51,8 @@
 3. **Облако:** проект на supabase.com → `./scripts/setup.sh`; хостинг веб-версии на домене.
 4. **Долгие внешние дела:** политика конфиденциальности и оферта; договор эквайринга
    ArCa / Idram; приложение Meta и App Review для Instagram.
-5. **Мобильные приложения:** EAS Build, проверка на телефонах, Google Play и App Store.
+5. **Мобильные приложения:** Android APK/AAB собираются на GitHub (см. «Android-приложение»);
+   дальше проверка на телефонах, Google Play, push (Firebase) и App Store.
 
 ### Проверки
 База: ~190 проверок (`supabase/tests`), демо-данные, сквозной тест в Chrome
@@ -169,6 +170,21 @@ http://127.0.0.1:54323.
 В Supabase: **Authentication → URL Configuration → Site URL** — адрес сайта
 `https://<логин>.github.io/marketing/`, иначе ссылки из писем будут вести на localhost.
 Пока переменных нет, задачи только проверяют код и ничего не публикуют.
+
+### Android-приложение
+
+**«Android»** (`.github/workflows/android.yml`) запускается вручную: **Actions → Android →
+Run workflow**. Через ~20 минут в **Releases** появляются `marketing.apk` (ставить на телефон)
+и `marketing.aab` (загружать в Google Play). Последний APK всегда по ссылке
+`https://github.com/<логин>/marketing/releases/latest/download/marketing.apk`.
+
+Сборка подписывается ключом `upload.keystore`. Он хранится вне репозитория
+(`~/Documents/marketing-keys/`), пароль там же. **Ключ нельзя терять:** с другим ключом
+Google Play не примет обновление, а телефоны не поставят его поверх старой версии.
+В секретах репозитория нужны `ANDROID_KEYSTORE_BASE64` (файл ключа в base64),
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS` (`upload`).
+Имя пакета `com.nareksardaryan.marketing` (`app.json`) после первой загрузки в Google Play не меняется.
+Push в сборке пока выключен (нужны EAS projectId и Firebase), уведомления идут в Telegram.
 
 ## Заказы и оплата
 
