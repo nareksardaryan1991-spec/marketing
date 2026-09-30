@@ -36,7 +36,7 @@ const check = (label, ok, extra = '') => {
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
-  args: ['--no-sandbox', '--lang=ru-RU'],
+  args: ['--no-sandbox', '--lang=ru-RU', '--autoplay-policy=no-user-gesture-required'],
 });
 
 // Отдельный «пользователь» со своим хранилищем — как отдельное окно/телефон.
@@ -46,6 +46,15 @@ async function openAs(email) {
   await page.setViewport({ width: 390, height: 780 });
   // Интерфейс на русском — как выбор языка в самом приложении.
   await page.evaluateOnNewDocument(() => localStorage.setItem('app.language', 'ru'));
+  // Считаем звуковые сигналы: каждый запуск аудио на странице.
+  await page.evaluateOnNewDocument(() => {
+    window.__sounds = 0;
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      window.__sounds++;
+      return play.call(this).catch(() => {});
+    };
+  });
   await page.goto(BASE, { waitUntil: 'networkidle0' });
   if (email) await signIn(page, email);
   return page;
@@ -89,6 +98,16 @@ async function send(page, message) {
   await waitText(page, message);
 }
 
+// На компьютере сообщение уходит по Enter, без кнопки.
+async function sendWithEnter(page, message) {
+  const input = await page.waitForSelector('textarea');
+  await input.type(message);
+  await page.keyboard.press('Enter');
+  await waitText(page, message);
+}
+
+const sounds = (page) => page.evaluate(() => window.__sounds);
+
 // 1. Два окна: менеджер и дизайнер переписываются одновременно.
 const manager = await openAs('manager@demo.am');
 const designer = await openAs('designer@demo.am');
@@ -104,8 +123,14 @@ const inManager = await bubble(manager, fromManager);
 check("manager's own message is on the right, without name", inManager?.side === 'right' && !inManager?.label, JSON.stringify(inManager));
 
 const fromDesigner = `Ответ дизайнера ${Date.now() % 10000}`;
-await send(designer, fromDesigner);
+const managerSounds = await sounds(manager);
+const designerSounds = await sounds(designer);
+await sendWithEnter(designer, fromDesigner);
+check('Enter sends the message and clears the field', await designer.$eval('textarea', (el) => el.value === ''));
 check('manager receives designer reply', await waitText(manager, fromDesigner, 9000));
+await new Promise((r) => setTimeout(r, 500));
+check('manager hears the signal for a new message', (await sounds(manager)) > managerSounds);
+check('designer hears no signal for own message', (await sounds(designer)) === designerSounds);
 const reply = await bubble(manager, fromDesigner);
 check("designer's reply is on the left for manager, signed «Ани Саргсян»", reply?.side === 'left' && reply?.label === 'Ани Саргсян', JSON.stringify(reply));
 await manager.screenshot({ path: `${SCREENS}chat-manager.png` });

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { playChatSound } from './chatSound';
 import { supabase } from './supabase';
 
 export type ChatMessage = {
@@ -20,6 +21,19 @@ export function useChatMessages(source: Source, id: string, userId: string | und
   const { table, column } = source;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Сообщения, которые уже были на экране: сигнал — только о новых и только от других.
+  const seen = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    seen.current = null;
+  }, [table, id]);
+
+  useEffect(() => {
+    if (!seen.current) return; // первая загрузка ещё не пришла
+    const fresh = messages.filter((m) => !seen.current!.has(m.id));
+    fresh.forEach((m) => seen.current!.add(m.id));
+    if (fresh.some((m) => m.author_id !== userId)) playChatSound();
+  }, [messages, userId]);
 
   const add = useCallback(
     (message: ChatMessage) =>
@@ -37,7 +51,9 @@ export function useChatMessages(source: Source, id: string, userId: string | und
         .limit(500)
         .then(({ data, error }) => {
           setError(error?.message ?? null);
-          if (data) setMessages(data as ChatMessage[]);
+          if (!data) return;
+          seen.current ??= new Set(data.map((m: ChatMessage) => m.id));
+          setMessages(data as ChatMessage[]);
         });
     load();
     // Подстраховка к realtime: если соединение пропало, новые сообщения всё равно придут.

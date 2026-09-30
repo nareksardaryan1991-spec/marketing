@@ -10,3 +10,6 @@ apps/mobile/dist-preview/
 apps/mobile/preview.log
 scripts/preview/node_modules/
 scripts/preview/screens/
+
+# Личные настройки Claude Code
+.claude/settings.local.json

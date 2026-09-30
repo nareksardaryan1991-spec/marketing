@@ -9,6 +9,8 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type NativeSyntheticEvent,
+  type TextInputKeyPressEventData,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -57,6 +59,15 @@ export function ChatView({
     setSending(false);
     if (failure) setSendError(failure);
     else onDraftChange('');
+  };
+
+  // На компьютере Enter отправляет, Shift+Enter — новая строка. На телефоне Enter — перенос,
+  // отправка кнопкой. isComposing — ввод через IME ещё не закончен.
+  const onKeyPress = (e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+    const event = e.nativeEvent as TextInputKeyPressEventData & { shiftKey?: boolean; isComposing?: boolean };
+    if (Platform.OS !== 'web' || event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    e.preventDefault();
+    if (!sending) send();
   };
 
   const time = (iso: string) =>
@@ -108,6 +119,7 @@ export function ChatView({
             <TextInput
               value={draft}
               onChangeText={onDraftChange}
+              onKeyPress={onKeyPress}
               placeholder={t('chat.placeholder')}
               placeholderTextColor={colors.muted}
               multiline

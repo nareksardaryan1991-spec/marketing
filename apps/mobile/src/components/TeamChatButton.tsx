@@ -1,8 +1,9 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
+import { playChatSound } from '@/lib/chatSound';
 import { supabase } from '@/lib/supabase';
 import type { Conversation } from '@/lib/teamChat';
 
@@ -12,12 +13,22 @@ import { colors } from './theme';
 export function TeamChatButton() {
   const { t } = useI18n();
   const [unread, setUnread] = useState(0);
+  // Сколько было при прошлой проверке; null — ещё не проверяли (без сигнала на старте).
+  const previous = useRef<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      supabase.rpc('my_conversations').then(({ data }) => {
-        setUnread(((data as Conversation[] | null) ?? []).reduce((sum, c) => sum + c.unread, 0));
-      });
+      const load = () =>
+        supabase.rpc('my_conversations').then(({ data }) => {
+          if (!data) return;
+          const total = (data as Conversation[]).reduce((sum, c) => sum + c.unread, 0);
+          if (previous.current !== null && total > previous.current) playChatSound();
+          previous.current = total;
+          setUnread(total);
+        });
+      load();
+      const timer = setInterval(load, 10000);
+      return () => clearInterval(timer);
     }, []),
   );
 
