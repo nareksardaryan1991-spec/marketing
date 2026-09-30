@@ -39,7 +39,7 @@
 | Роли | владелец (один), менеджер, дизайнер, видеограф, монтажёр, фотограф, копирайтер, SMM, таргетолог, SEO, фрилансер, клиент |
 | Регистрация | сотрудник ждёт роль от владельца; клиент — сразу, без одобрения |
 | Чат команды | общий + личные; фрилансеры — только личные |
-| Уведомления | Telegram + push; WhatsApp — позже |
+| Уведомления | Telegram + push + web push (сайт; на iPhone — через «На экран „Домой“»); WhatsApp — позже |
 | Отложено | WhatsApp, генерация картинок AI, публикация на Facebook-страницы, автосписание подписки с карты |
 
 ### Что осталось
@@ -48,15 +48,61 @@
    затем `./scripts/local.sh`, пройти весь путь руками и исправить найденное.
 2. **Данные от заказчика:** реальные цены; проверить армянские тексты
    (`apps/mobile/src/i18n/hy.ts`) носителем языка; ключ Anthropic; Telegram-бот.
-3. **Облако:** проект на supabase.com → `./scripts/setup.sh`; хостинг веб-версии на домене.
+3. **Облако** (состояние на 30.09.2026) — см. «Сервер Supabase сейчас» ниже.
+   Осталось: ключи сервисов (Telegram-бот, Anthropic, Instagram, `PAYMENT_MODE`,
+   `APP_RETURN_PREFIXES`) и сайт на своём домене.
 4. **Долгие внешние дела:** политика конфиденциальности и оферта; договор эквайринга
    ArCa / Idram; приложение Meta и App Review для Instagram.
 5. **Мобильные приложения:** Android APK/AAB собираются на GitHub (см. «Android-приложение»);
-   дальше проверка на телефонах, Google Play, push (Firebase) и App Store.
+   дальше проверка на телефонах, Google Play, push (Firebase). iPhone — см. «Установка на iPhone».
+6. **Web push:** сервер отправляет без ошибок (проверено 30.09.2026). Осталось заказчику
+   подтвердить, что уведомление приходит на iPhone при закрытом приложении.
+
+### Сервер Supabase сейчас
+Проект `ijczwbgjhahitzphgxry` (https://ijczwbgjhahitzphgxry.supabase.co), привязан к этой папке
+(`supabase/.temp/project-ref`), Supabase CLI на компьютере уже вошёл в аккаунт.
+- База: применены миграции `0001`–`0013`. Функции выложены, `notify-dispatch` — с web push.
+- Секреты функций: `VAPID_*` (web push), `NOTIFY_WEBHOOK_SECRET`, `AUTOPUBLISH_SECRET`.
+  В Vault базы: `project_url`, `notify_webhook_secret`, `autopublish_secret`.
+- **Ещё не заданы:** `TELEGRAM_BOT_TOKEN` (Telegram не работает), `ANTHROPIC_API_KEY` (AI),
+  `INSTAGRAM_*`, `PAYMENT_MODE`, `APP_RETURN_PREFIXES`, `TELEGRAM_WEBHOOK_SECRET`.
+  Добавить — повторным `./scripts/setup.sh` (Enter пропускает ненужное; секреты уведомлений
+  он создаст заново, это нормально).
+- До 30.09.2026 не было секретов уведомлений, и ни одно уведомление не отправлялось
+  (в `notifications` пустой `sent_at` без `error`). Исправлено `./scripts/enable-notifications.sh`.
+- Задача GitHub «Сервер» только проверяет код: выкладка из неё выключена (нет переменной
+  `SUPABASE_PROJECT_REF` и секретов `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`).
+  Поэтому миграции и функции выкладываются вручную с этого компьютера:
+  ```bash
+  npx --yes supabase@2 db push
+  npx --yes supabase@2 functions deploy            # или: functions deploy <имя>
+  npx --yes supabase@2 secrets set --env-file <файл>
+  ```
+  Claude Code в автоматическом режиме не может выкладывать на рабочий сервер: он готовит
+  изменения и команды, а запускает их владелец (или явно просит Claude выполнить).
+- Посмотреть состояние (только чтение):
+  `npx --yes supabase@2 db query --linked "select kind, sent_at, error from notifications order by created_at desc limit 10"`,
+  ответы функций — таблица `net._http_response`.
+
+### Установка на iPhone
+- **Сейчас, бесплатно:** Safari → https://nareksardaryan1991-spec.github.io/marketing/ →
+  «Поделиться» → «На экран „Домой“». Открывать с этой иконки. Там же работают web push:
+  раздел «Уведомления» → «Включить push» → «Разрешить» (iOS 16.4+).
+  Если «Недоступны» — старая iOS; «Запрещены» — Настройки → Уведомления → Marketing.
+- **Проверка во время разработки:** Expo Go из App Store + `cd apps/mobile && npm start`,
+  QR-код камерой (телефон и компьютер в одной Wi-Fi).
+- **Настоящее приложение (TestFlight / App Store):** нужен Apple Developer Program ($99/год).
+  Mac не нужен — сборка через EAS Build. Ещё не настроено: нужны `ios.bundleIdentifier`
+  в `app.json`, `npx eas-cli@latest init`, аккаунт expo.dev и App Store Connect API key;
+  тогда можно сделать сборку на GitHub, как для Android. Этот же аккаунт нужен для push
+  в iOS-приложении.
+- Звук в открытом чате на iPhone звучит не всегда: iOS разрешает сайту звук только после
+  касания экрана и глушит его в свёрнутом приложении. При закрытом приложении звук даёт
+  само уведомление (web push).
 
 ### Проверки
 База: ~190 проверок (`supabase/tests`), демо-данные, сквозной тест в Chrome
-(`scripts/preview`, 13 проверок), типы и линтер приложения, типы серверных функций.
+(`scripts/preview`, 18 проверок, включая web push), типы и линтер приложения, типы серверных функций.
 
 ## Структура
 
