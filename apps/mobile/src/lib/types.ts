@@ -22,6 +22,11 @@ export type Profile = {
   role: UserRole;
   language: Language;
   email: string | null;
+  // Личный кабинет: пути в bucket avatars, цвет обложки (#RRGGBB) и «о себе».
+  avatar_path: string | null;
+  cover_path: string | null;
+  accent_color: string | null;
+  bio: string | null;
   created_at: string;
 };
 

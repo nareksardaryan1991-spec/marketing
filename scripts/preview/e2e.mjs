@@ -200,7 +200,38 @@ check('notification tap opens the order chat',
   await pusher.waitForFunction((o) => location.pathname === `/orders/${o}/chat`, { timeout: 10000 }, ORDER).then(() => true, () => false),
   await pusher.evaluate(() => location.pathname + location.search));
 
-// 6. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
+// 6. Личный кабинет: клиент меняет имя, «о себе», цвет и фото — на главном видно сразу.
+const PHOTO = new URL('../../apps/mobile/assets/icon.png', import.meta.url).pathname;
+const cabinet = await openAs('client@demo.am');
+await cabinet.locator('::-p-text(Личный кабинет →)').click();
+check('home header opens the cabinet', await waitText(cabinet, 'Цвет обложки'));
+const nameInput = await cabinet.waitForSelector('input[value="Анна Петросян"]');
+await nameInput.click({ count: 3 });
+await nameInput.type('Анна П.');
+await (await cabinet.waitForSelector('textarea')).type('Владелица Cafe Aroma');
+await cabinet.locator('::-p-text(Сохранить)').click();
+check('name and bio saved', await waitText(cabinet, 'Сохранено'));
+await cabinet.locator('[aria-label="#DB2777"]').click();
+const [chooser] = await Promise.all([
+  cabinet.waitForFileChooser(),
+  cabinet.locator('::-p-text(Добавить фото)').click(),
+]);
+await chooser.accept([PHOTO]);
+check('photo uploaded', await waitText(cabinet, 'Сменить фото'));
+const avatarSrc = await cabinet.waitForSelector('img[src*="/storage/v1/object/public/avatars/"]').then(
+  (img) => img.evaluate((el) => el.src), () => null);
+check('photo is served back', avatarSrc && (await fetch(avatarSrc)).ok, avatarSrc);
+await cabinet.screenshot({ path: `${SCREENS}cabinet.png`, fullPage: true });
+await cabinet.goto(BASE, { waitUntil: 'networkidle0' });
+const home = await text(cabinet);
+check('home shows new name and bio', home.includes('Анна П.') && home.includes('Владелица Cafe Aroma'));
+check('other people cannot upload into my folder',
+  (await fetch(`${BASE}/storage/v1/object/avatars/c0000000-0000-4000-8000-000000000001/x.jpg`, {
+    method: 'POST', headers: { Authorization: 'Bearer demo:designer@demo.am' }, body: 'x',
+  })).status === 403);
+await cabinet.screenshot({ path: `${SCREENS}home-client.png` });
+
+// 7. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);
 await ghost.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });
 const ghostInputs = await ghost.$$('input');

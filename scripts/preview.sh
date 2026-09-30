@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Просмотровая версия приложения на http://localhost:8081 — без Docker и без облака.
 # Демо-данные, вход: client@demo.am / manager@demo.am / designer@demo.am / freelancer@demo.am, пароль demo1234.
-# Сохраняются только сообщения в чатах (пока сервер работает). Для полноценной версии — ./scripts/local.sh.
+# Сохраняются только сообщения в чатах и личный кабинет (пока сервер работает). Для полноценной версии — ./scripts/local.sh.
 #
 #   ./scripts/preview.sh               собрать и запустить (Ctrl+C — остановить)
 #   ./scripts/preview.sh --background  запустить в фоне (работает, пока не перезагрузите компьютер)

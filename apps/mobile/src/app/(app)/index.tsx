@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { OrdersList } from '@/components/OrdersList';
+import { ProfileHeader } from '@/components/ProfileHeader';
 import { ReviewInbox } from '@/components/ReviewInbox';
 import { TasksList } from '@/components/TasksList';
 import { TeamChatButton } from '@/components/TeamChatButton';
@@ -24,8 +25,11 @@ export default function HomeScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>{t('home.hello', { name: profile.full_name || '' })}</Text>
-      <Text style={styles.muted}>{t('home.role', { role: t(`roles.${profile.role}`) })}</Text>
+      <Pressable accessibilityRole="button" onPress={() => router.push('/profile')}>
+        <ProfileHeader profile={profile} subtitle={t(`roles.${profile.role}`)}>
+          <Text style={styles.link}>{t('profile.title')} →</Text>
+        </ProfileHeader>
+      </Pressable>
 
       {profile.role !== 'client' && <TeamChatButton />}
       {profile.role === 'client' && business && <ClientHome business={business} />}
@@ -158,7 +162,7 @@ function ClientsList() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 26, fontWeight: '700', color: colors.text, marginTop: 16 },
+  link: { fontSize: 15, fontWeight: '600', color: colors.primary, marginTop: 8 },
   cardTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
   label: { fontSize: 13, color: colors.muted, textTransform: 'uppercase' },
   muted: { fontSize: 15, color: colors.muted },

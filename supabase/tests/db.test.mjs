@@ -525,4 +525,21 @@ check('same browser, new user takes over', (await as(null, 'select user_id, p256
 await as(MANAGER, `select delete_web_push_subscription($1)`, [EP]);
 check('owner deletes own subscription', (await as(null, 'select 1 from web_push_subscriptions where endpoint=$1', [EP])).rows.length === 0);
 
+// ---- Личный кабинет ----
+await as(CLIENT, `update profiles set full_name='Anna', avatar_path=$2, cover_path=$3, accent_color='#DB2777', bio='Hi' where id=$1`,
+  [CLIENT, `${CLIENT}/avatar-1.jpg`, `${CLIENT}/cover-1.jpg`]);
+const cab = (await as(CLIENT, 'select * from profiles where id=$1', [CLIENT])).rows[0];
+check('client edits own cabinet', cab.full_name === 'Anna' && cab.accent_color === '#DB2777' && cab.avatar_path === `${CLIENT}/avatar-1.jpg`);
+await as(OTHER, `update profiles set bio='hacked' where id=$1`, [CLIENT]);
+check('other user cannot edit my cabinet', (await as(null, 'select bio from profiles where id=$1', [CLIENT])).rows[0].bio === 'Hi');
+await fails('accent color must be #RRGGBB', () => as(CLIENT, `update profiles set accent_color='red' where id=$1`, [CLIENT]));
+await fails('bio at most 500 chars', () => as(CLIENT, `update profiles set bio=repeat('a', 501) where id=$1`, [CLIENT]));
+await as(CLIENT, `insert into storage.objects (bucket_id, name) values ('avatars', $1)`, [`${CLIENT}/avatar-1.jpg`]);
+await fails('cannot upload photo into someone else folder', () => as(CLIENT, `insert into storage.objects (bucket_id, name) values ('avatars', $1)`, [`${OTHER}/avatar-1.jpg`]));
+check('everyone signed in sees photos', (await as(OTHER, `select 1 from storage.objects where bucket_id='avatars'`)).rows.length === 1);
+await as(OTHER, `delete from storage.objects where bucket_id='avatars'`);
+check('other user cannot delete my photo', (await as(CLIENT, `select 1 from storage.objects where bucket_id='avatars'`)).rows.length === 1);
+await as(CLIENT, `delete from storage.objects where bucket_id='avatars' and name=$1`, [`${CLIENT}/avatar-1.jpg`]);
+check('owner deletes own photo', (await as(CLIENT, `select 1 from storage.objects where bucket_id='avatars'`)).rows.length === 0);
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

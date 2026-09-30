@@ -2,8 +2,8 @@
 """Просмотровый сервер: собранное веб-приложение + поддельный Supabase с демо-данными.
 
 Нужен, чтобы посмотреть приложение без Docker и без облака. Работает только на этом
-компьютере (127.0.0.1). Сообщения в чатах сохраняются в памяти, пока сервер запущен;
-остальные действия (оплата, одобрение, назначение) не сохраняются.
+компьютере (127.0.0.1). Сообщения в чатах и личный кабинет (имя, фото, обложка) сохраняются в памяти,
+пока сервер запущен; остальные действия (оплата, одобрение, назначение) не сохраняются.
 
 Запуск: ./scripts/preview.sh  (или python3 scripts/preview/mock_server.py <папка сборки> <порт>)
 Вход: client@demo.am / manager@demo.am / designer@demo.am / freelancer@demo.am, пароль demo1234.
@@ -45,7 +45,8 @@ FREELANCER = 'f0000000-0000-4000-8000-000000000004'
 
 def person(pid, name, email, role):
     return {'id': pid, 'full_name': name, 'email': email, 'role': role, 'language': 'ru',
-            'phone': None, 'created_at': day(-40)}
+            'phone': None, 'avatar_path': None, 'cover_path': None, 'accent_color': None, 'bio': None,
+            'created_at': day(-40)}
 
 
 ADMIN = 'ad000000-0000-4000-8000-000000000005'
@@ -77,6 +78,10 @@ def is_team(role):
 
 def is_manager(role):
     return role in ('manager', 'admin')
+
+# Фото из личного кабинета (bucket avatars): путь -> (тип, байты). Живут, пока сервер запущен.
+PHOTOS = {}
+PROFILE_FIELDS = ('full_name', 'phone', 'language', 'avatar_path', 'cover_path', 'accent_color', 'bio')
 
 # Кто делает текущий запрос — определяется по токену входа (у каждого окна свой).
 REQUEST = threading.local()
@@ -491,6 +496,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.cors()
             self.end_headers()
             return None
+        if path.startswith('/auth/v1/user') and self.command == 'PUT':
+            password = self.body().get('password')
+            if me() is PENDING_ANON or not password:
+                return self.reply({'msg': 'not signed in'}, 401)
+            PASSWORDS[me()['email']] = password
+            return self.reply({'id': me()['id'], 'email': me()['email'], 'aud': 'authenticated'})
         if path.startswith('/auth/v1/user'):
             return self.reply({'id': me()['id'], 'email': me()['email'], 'aud': 'authenticated'})
         if path.startswith('/auth/v1/signup'):
@@ -505,6 +516,37 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             PROFILES[email] = profile
             PASSWORDS[email] = data.get('password')
             return self.reply(session_for(profile))
+
+        # Личный кабинет: человек меняет только свой профиль и только разрешённые поля.
+        if self.command == 'PATCH' and path == '/rest/v1/profiles':
+            data, profile = self.body(), me()
+            if eq(q, 'id') != profile['id'] or profile is PENDING_ANON:
+                return self.reply([])
+            profile.update({k: v for k, v in data.items() if k in PROFILE_FIELDS})
+            return self.reply(profile if self.wants_object() else [profile])
+
+        if path.startswith('/storage/v1/object/public/avatars/'):
+            photo = PHOTOS.get(urllib.parse.unquote(path[len('/storage/v1/object/public/avatars/'):]))
+            if not photo:
+                return self.reply({'error': 'not found'}, 404)
+            self.send_response(200)
+            self.cors()
+            self.send_header('Content-Type', photo[0])
+            self.send_header('Content-Length', str(len(photo[1])))
+            self.end_headers()
+            self.wfile.write(photo[1])
+            return None
+        if path.startswith('/storage/v1/object/avatars/') and self.command == 'POST':
+            name = urllib.parse.unquote(path[len('/storage/v1/object/avatars/'):])
+            if name.split('/')[0] != me()['id']:
+                return self.reply({'statusCode': '403', 'error': 'Unauthorized',
+                                   'message': 'new row violates row-level security policy'}, 403)
+            length = int(self.headers.get('Content-Length') or 0)
+            PHOTOS[name] = (self.headers.get('Content-Type') or 'image/jpeg', self.rfile.read(length))
+            return self.reply({'Key': 'avatars/' + name, 'Id': name})
+        if path == '/storage/v1/object/avatars' and self.command == 'DELETE':
+            removed = [n for n in self.body().get('prefixes', []) if n.split('/')[0] == me()['id'] and PHOTOS.pop(n, None)]
+            return self.reply([{'name': n} for n in removed])
 
         if path.startswith('/rest/v1/rpc/'):
             fn, data = path.rsplit('/', 1)[1], self.body()
@@ -575,6 +617,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.api()
 
     def do_PATCH(self):
+        self.api()
+
+    def do_PUT(self):
+        self.api()
+
+    def do_DELETE(self):
         self.api()
 
     def do_GET(self):
