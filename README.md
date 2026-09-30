@@ -296,6 +296,10 @@ AI использует модель Claude Opus 5.5. Каждый запрос 
   (адрес сайта). Без них web push не отправляется, Telegram работает как раньше.
 Если ключи сменить, браузеры переподпишутся при следующем входе в приложение.
 
+**Уведомления не уходят вовсе** (в таблице `notifications` пустой `sent_at` и нет `error`):
+у базы нет секретов для вызова `notify-dispatch`. Исправляет `./scripts/enable-notifications.sh`
+(то же делает шаг 4 `setup.sh`).
+
 **Push в приложении** работает только в собранном приложении (EAS Build), не в Expo Go
 на Android. Нужны `npx eas-cli@latest init` (добавит projectId) и ключи Firebase/Apple
 при сборке. До этого уведомления приходят в Telegram и web push.

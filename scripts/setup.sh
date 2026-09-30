@@ -114,11 +114,14 @@ if [ -z "$PUBLISHABLE_KEY" ]; then
   echo "Не удалось получить ключ автоматически. Project Settings → API Keys → Publishable key."
   PUBLISHABLE_KEY=$(ask "Publishable key: ")
 fi
+# Ключ web push (см. README, «Web push») сохраняем, если он уже был.
+WEB_PUSH_LINE=$(grep '^EXPO_PUBLIC_WEB_PUSH_KEY=' apps/mobile/.env.local 2>/dev/null || true)
 cat > apps/mobile/.env.local <<ENV
 EXPO_PUBLIC_SUPABASE_URL=$PROJECT_URL
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY
 EXPO_PUBLIC_TELEGRAM_BOT=$TELEGRAM_BOT_USERNAME
 ENV
+[ -n "$WEB_PUSH_LINE" ] && echo "$WEB_PUSH_LINE" >> apps/mobile/.env.local
 echo "Записано в apps/mobile/.env.local"
 
 say "Готово"
