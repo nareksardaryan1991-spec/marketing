@@ -1,0 +1,12 @@
+node_modules/
+.env*.local
+.DS_Store
+# Локальный запуск
+supabase/functions/.env
+supabase/.temp/
+supabase/.branches/
+apps/mobile/dist-local/
+apps/mobile/dist-preview/
+apps/mobile/preview.log
+scripts/preview/node_modules/
+scripts/preview/screens/
