@@ -210,8 +210,10 @@ export const en: Translations = {
     pushEnable: 'Enable push',
     pushStatus: {
       enabled: 'Enabled',
-      denied: 'Blocked in phone settings',
+      denied: 'Blocked in phone or browser settings',
       unavailable: 'Not available on this device',
+      install:
+        'On iPhone: open the site in Safari, tap Share → "Add to Home Screen", open the app from that icon and enable notifications here.',
     },
   },
   publish: {

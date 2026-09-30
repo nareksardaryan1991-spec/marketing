@@ -184,7 +184,8 @@ Google Play не примет обновление, а телефоны не п�
 В секретах репозитория нужны `ANDROID_KEYSTORE_BASE64` (файл ключа в base64),
 `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS` (`upload`).
 Имя пакета `com.nareksardaryan.marketing` (`app.json`) после первой загрузки в Google Play не меняется.
-Push в сборке пока выключен (нужны EAS projectId и Firebase), уведомления идут в Telegram.
+Push в сборке пока выключен (нужны EAS projectId и Firebase), уведомления идут в Telegram
+и web push на сайте.
 
 ## Заказы и оплата
 
@@ -282,9 +283,22 @@ AI использует модель Claude Opus 5.5. Каждый запрос 
 | Новое сообщение от команды | клиенту |
 | Сообщение в чате команды | участникам беседы (в общем — всей штатной команде) |
 
-**Push** работает только в собранном приложении (EAS Build), не в Expo Go на Android и
-не в вебе. Нужны `npx eas-cli@latest init` (добавит projectId) и ключи Firebase/Apple
-при сборке. До этого уведомления приходят в Telegram.
+**Web push** — уведомления на сайте: в браузере на компьютере и Android, а на iPhone
+(iOS 16.4+) — в сайте, добавленном через Safari «Поделиться» → «На экран „Домой“».
+Человек включает их кнопкой «Включить push» в разделе «Уведомления» (Safari спрашивает
+разрешение только по нажатию). Нажатие на уведомление открывает нужный экран.
+Устроено так: `apps/mobile/public/sw.js` (service worker) и `manifest.webmanifest`,
+подписка — `src/lib/push.web.ts`, подписки хранятся в `web_push_subscriptions`,
+отправляет `notify-dispatch`. При выходе из аккаунта браузер отписывается.
+Ключи VAPID лежат в `~/Documents/marketing-keys/vapid.env`:
+- публичный — переменная репозитория `EXPO_PUBLIC_WEB_PUSH_KEY` (и в `apps/mobile/.env.local`);
+- в секретах Supabase — `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` и `VAPID_SUBJECT`
+  (адрес сайта). Без них web push не отправляется, Telegram работает как раньше.
+Если ключи сменить, браузеры переподпишутся при следующем входе в приложение.
+
+**Push в приложении** работает только в собранном приложении (EAS Build), не в Expo Go
+на Android. Нужны `npx eas-cli@latest init` (добавит projectId) и ключи Firebase/Apple
+при сборке. До этого уведомления приходят в Telegram и web push.
 
 ## Публикация и контент-календарь
 

@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { colors } from '@/components/theme';
 import { Button } from '@/components/ui';
 import { LanguageProvider, useI18n } from '@/i18n';
+import '@/lib/webApp';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 
 export default function RootLayout() {

@@ -1,6 +1,8 @@
-// Отправляет уведомление из таблицы notifications в Telegram и push.
+// Отправляет уведомление из таблицы notifications в Telegram, push приложения и web push.
 // Вызывается Database Webhook'ом на INSERT в public.notifications
 // с заголовком x-webhook-secret: <NOTIFY_WEBHOOK_SECRET>.
+import webpush from 'npm:web-push@3.6.7';
+
 import { requireEnv, text } from '../_shared/http.ts';
 import { adminClient } from '../_shared/supabase.ts';
 
@@ -43,6 +45,35 @@ async function sendPush(token: string, message: string, data: Record<string, unk
   return true;
 }
 
+type WebPushSubscription = { endpoint: string; p256dh: string; auth: string };
+
+// Web push в браузер и в сайт на экране «Домой». Без ключей VAPID не отправляется.
+// VAPID_SUBJECT — адрес сайта (https://...) или mailto: для связи с владельцем.
+// Возвращает false, если подписка больше не действительна (браузер отписался).
+const vapid = {
+  publicKey: Deno.env.get('VAPID_PUBLIC_KEY'),
+  privateKey: Deno.env.get('VAPID_PRIVATE_KEY'),
+  subject: Deno.env.get('VAPID_SUBJECT'),
+};
+async function sendWebPush(sub: WebPushSubscription, message: string, data: Record<string, unknown>) {
+  const [title, ...rest] = message.split('\n');
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      JSON.stringify({ title, body: rest.join('\n'), data }),
+      {
+        vapidDetails: { subject: vapid.subject!, publicKey: vapid.publicKey!, privateKey: vapid.privateKey! },
+        TTL: 60 * 60 * 24,
+      },
+    );
+    return true;
+  } catch (e) {
+    const status = (e as { statusCode?: number }).statusCode;
+    if (status === 404 || status === 410) return false;
+    throw new Error(`web push ${status ?? ''}: ${(e as Error).message}`);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.headers.get('x-webhook-secret') !== requireEnv('NOTIFY_WEBHOOK_SECRET')) {
     return text('forbidden', 403);
@@ -76,13 +107,13 @@ Deno.serve(async (req) => {
   if (profile.telegram_chat_id) {
     await sendTelegram(profile.telegram_chat_id, message).catch((e) => errors.push(String(e)));
   }
+  const data = {
+    kind: record.kind,
+    order_id: payload.order_id,
+    task_id: payload.task_id,
+    conversation_id: payload.conversation_id,
+  };
   if (profile.expo_push_token) {
-    const data = {
-      kind: record.kind,
-      order_id: payload.order_id,
-      task_id: payload.task_id,
-      conversation_id: payload.conversation_id,
-    };
     try {
       const valid = await sendPush(profile.expo_push_token, message, data);
       if (!valid) {
@@ -91,6 +122,24 @@ Deno.serve(async (req) => {
     } catch (e) {
       errors.push(String(e));
     }
+  }
+
+  if (vapid.publicKey && vapid.privateKey && vapid.subject) {
+    const { data: subs } = await admin
+      .from('web_push_subscriptions')
+      .select('endpoint, p256dh, auth')
+      .eq('user_id', record.user_id);
+    await Promise.all(
+      (subs ?? []).map(async (sub) => {
+        try {
+          if (!(await sendWebPush(sub, message, data))) {
+            await admin.from('web_push_subscriptions').delete().eq('endpoint', sub.endpoint);
+          }
+        } catch (e) {
+          errors.push(String(e));
+        }
+      }),
+    );
   }
 
   await admin

@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 
 import { colors } from '@/components/theme';
 import { useI18n } from '@/i18n';
@@ -13,8 +14,9 @@ export default function AppLayout() {
   const userId = profile?.id;
 
   // Токен обновляется при каждом входе; разрешение спрашиваем один раз.
+  // В браузере — только по кнопке на экране уведомлений: Safari не показывает запрос без нажатия.
   useEffect(() => {
-    if (userId) registerPush(userId, true);
+    if (userId) registerPush(userId, Platform.OS !== 'web');
   }, [userId]);
   useNotificationTaps(profile?.role === 'client');
 

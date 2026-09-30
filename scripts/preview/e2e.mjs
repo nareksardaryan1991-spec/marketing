@@ -178,7 +178,29 @@ check('instagram and facebook cards with their own prices',
   orderText.includes('8 000') && orderText.includes('6 000') && orderText.includes('Дополнительно'));
 await client.screenshot({ path: `${SCREENS}new-order.png`, fullPage: true });
 
-// 5. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
+// 5. Web push: сайт как приложение (манифест для «На экран „Домой“»), service worker
+//    и открытие нужного экрана по нажатию на уведомление.
+const ORDER = 'e0000000-0000-4000-8000-000000000001';
+const pusher = await openAs('manager@demo.am');
+const manifestHref = await pusher.evaluate(() => document.querySelector('link[rel="manifest"]')?.href);
+const manifest = manifestHref && (await fetch(manifestHref).then((r) => r.json(), () => null));
+check('web app manifest is linked', manifest?.display === 'standalone', manifestHref);
+check('service worker is served', (await fetch(`${BASE}/sw.js`)).ok);
+await pusher.browserContext().overridePermissions(BASE, ['notifications']);
+await pusher.goto(`${BASE}/notifications`, { waitUntil: 'networkidle0' });
+await pusher.locator('::-p-text(Включить push)').click();
+// Без сервиса push в безголовом Chrome подписка может не получиться — важно, что ответ есть.
+check('enable push answers with a status',
+  await waitText(pusher, 'Включены').then((ok) => ok || waitText(pusher, 'Недоступны', 1000)));
+const swScope = await pusher.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.scope);
+check('service worker registered for the whole site', swScope === `${BASE}/`, swScope);
+const tap = encodeURIComponent(JSON.stringify({ kind: 'client_message', order_id: ORDER }));
+await pusher.goto(`${BASE}/?push=${tap}`, { waitUntil: 'networkidle0' });
+check('notification tap opens the order chat',
+  await pusher.waitForFunction((o) => location.pathname === `/orders/${o}/chat`, { timeout: 10000 }, ORDER).then(() => true, () => false),
+  await pusher.evaluate(() => location.pathname + location.search));
+
+// 6. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);
 await ghost.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });
 const ghostInputs = await ghost.$$('input');

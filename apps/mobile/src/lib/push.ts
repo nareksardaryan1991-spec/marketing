@@ -14,7 +14,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export type PushStatus = 'enabled' | 'denied' | 'unavailable';
+export type PushStatus = 'enabled' | 'denied' | 'unavailable' | 'install';
 
 // Запрашивает разрешение и сохраняет push-токен в профиле.
 // Push работает только в сборке с EAS projectId (не в вебе и не в Expo Go на Android).
@@ -44,3 +44,6 @@ export async function registerPush(userId: string, ask: boolean): Promise<PushSt
     return 'unavailable';
   }
 }
+
+// Web push отписывается при выходе (push.web.ts); токен приложения пока остаётся в профиле.
+export async function unregisterPush() {}

@@ -506,4 +506,23 @@ const pn = (await notes()).filter(n => n.kind === 'publish_due');
 check('auto order: facebook post reminds team, instagram post does not: ' + pn.map(n => n.payload.platform).join(','),
   pn.length > 0 && pn.every(n => n.payload.platform === 'Facebook'));
 
+// ---- Web push ----
+const EP = 'https://web.push.apple.com/device-1';
+await as(CLIENT, `select save_web_push_subscription($1, 'key', 'secret')`, [EP]);
+check('subscription saved for client', (await as(null, 'select user_id from web_push_subscriptions where endpoint=$1', [EP])).rows[0]?.user_id === CLIENT);
+await fails('user cannot read subscriptions', () => as(CLIENT, 'select * from web_push_subscriptions'));
+await fails('user cannot insert subscription directly', () => as(CLIENT, `insert into web_push_subscriptions values ('https://x', $1, 'k', 'a')`, [OTHER]));
+await fails('anon cannot save subscription', async () => {
+  try { await db.exec(`set role anon; select save_web_push_subscription('https://x', 'k', 'a')`); }
+  finally { await db.exec('reset role;'); }
+});
+await fails('endpoint must be https', () => as(CLIENT, `select save_web_push_subscription('http://x', 'k', 'a')`));
+await as(OTHER, `select delete_web_push_subscription($1)`, [EP]);
+check('other user cannot delete client subscription', (await as(null, 'select 1 from web_push_subscriptions where endpoint=$1', [EP])).rows.length === 1);
+// В этом браузере вошёл другой человек — подписка переходит к нему.
+await as(MANAGER, `select save_web_push_subscription($1, 'key2', 'secret2')`, [EP]);
+check('same browser, new user takes over', (await as(null, 'select user_id, p256dh from web_push_subscriptions where endpoint=$1', [EP])).rows[0]?.user_id === MANAGER);
+await as(MANAGER, `select delete_web_push_subscription($1)`, [EP]);
+check('owner deletes own subscription', (await as(null, 'select 1 from web_push_subscriptions where endpoint=$1', [EP])).rows.length === 0);
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

@@ -1,6 +1,7 @@
 # Веб-версия на GitHub Pages: проверка, сборка и публикация при каждом обновлении main.
 # Нужны переменные репозитория (Settings → Secrets and variables → Actions → Variables):
 #   EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, EXPO_PUBLIC_TELEGRAM_BOT (можно пустой).
+#   EXPO_PUBLIC_WEB_PUSH_KEY — публичный ключ VAPID для web push (без него push на сайте недоступен).
 # Пока их нет, сайт не публикуется (приложению не к чему подключаться).
 name: Сайт
 
@@ -53,6 +54,7 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           EXPO_PUBLIC_TELEGRAM_BOT: ${{ vars.EXPO_PUBLIC_TELEGRAM_BOT }}
+          EXPO_PUBLIC_WEB_PUSH_KEY: ${{ vars.EXPO_PUBLIC_WEB_PUSH_KEY }}
         run: |
           npx expo export --platform web --clear --output-dir dist
           # Pages не знает про маршруты приложения: любая ссылка вроде /orders/123
