@@ -8,9 +8,11 @@
 
 ## Состояние проекта (30 сентября 2026)
 
-Код всех этапов готов и проверен автоматически, но **ни разу не запускался на
-настоящем сервере** — есть только просмотровая версия с поддельным сервером
-(см. «Быстрый просмотр»). Следующий шаг — полноценный запуск (Docker или облако).
+Приложение **работает онлайн**: https://nareksardaryan1991-spec.github.io/marketing/
+(сайт — GitHub Pages, сервер — Supabase). Код: https://github.com/nareksardaryan1991-spec/marketing
+(публичный репозиторий; каждое изменение в `main` само обновляет сайт). Весь путь заказа
+на живом сервере руками ещё не пройден. Для показа без сервера есть просмотровая версия
+(см. «Быстрый просмотр»).
 
 ### Что сделано
 - Регистрация: «Я клиент» / «Я сотрудник»; сотрудник ждёт роль от владельца.
@@ -83,6 +85,31 @@
 - Посмотреть состояние (только чтение):
   `npx --yes supabase@2 db query --linked "select kind, sent_at, error from notifications order by created_at desc limit 10"`,
   ответы функций — таблица `net._http_response`.
+
+### Сайт, вход и почта сейчас
+- **Регион** проекта Supabase — Seoul (выбран при создании; для Армении ближе Frankfurt,
+  перенести можно только новым проектом).
+- **Владелец** (`admin`) назначен 30.09.2026 (`./scripts/make-admin.sh <почта>`).
+  Ещё один зарегистрированный человек ждёт роли — владелец назначает её на экране «Команда»,
+  если это сотрудник. Кто зарегистрирован — Supabase → Authentication → Users.
+- **Вход:** в Supabase (Authentication → URL Configuration) Site URL —
+  `https://nareksardaryan1991-spec.github.io/marketing/`, разрешённые адреса возврата —
+  сайт, `marketing://**`, `exp://**`, `http://localhost:8081/**`. Подтверждение почты включено.
+- **Письма** (подтверждение регистрации, сброс пароля) уходят через служебный Gmail агентства
+  (адрес — в Authentication → Emails → SMTP: `smtp.gmail.com:465`, пароль приложения Google). Лимит — 30 писем в час (у Gmail ~500 в день). Встроенная почта
+  Supabase давала только 2 письма в час — из-за этого регистрация «переставала работать».
+  Если письма перестали приходить — пароль приложения удалён или сменён: создать новый на
+  https://myaccount.google.com/apppasswords (войдя в этот служебный Gmail) и вписать в SMTP.
+  Для настоящих клиентов лучше почта на своём домене.
+- **Переменные GitHub** (Settings → Secrets and variables → Actions → Variables):
+  `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` заданы;
+  `EXPO_PUBLIC_TELEGRAM_BOT` — пусто, пока нет бота.
+- **Доступ Claude Code к Supabase:** токен `claude` (supabase.com/dashboard/account/tokens,
+  доступ только к этому проекту) действует **до 7 октября 2026**; он был отправлен в чат —
+  после окончания работ удалить его там и файлы `~/.supabase-token`, `~/.supabase/access-token`.
+  В `.claude/settings.local.json` (не в git) владелец разрешил Claude Code команды
+  `npx --yes supabase@2 …`; запись секретов защита Claude Code всё равно не пропускает —
+  их задаёт владелец сам.
 
 ### Установка на iPhone
 - **Сейчас, бесплатно:** Safari → https://nareksardaryan1991-spec.github.io/marketing/ →
