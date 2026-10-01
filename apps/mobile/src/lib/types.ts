@@ -155,6 +155,8 @@ export type Deliverable = {
   note: string | null;
   created_by: string;
   created_at: string;
+  // Какой AI-агент сделал версию (null — человек).
+  agent?: string | null;
 };
 
 export type TaskComment = {

@@ -31,9 +31,10 @@ export async function pickAndUpload(taskId: string): Promise<UploadedFile[]> {
   return uploaded;
 }
 
-export async function signedUrls(paths: string[]): Promise<Record<string, string>> {
+// По умолчанию — материалы задач; картинки из чата с AI-агентом лежат в бакете agent-files.
+export async function signedUrls(paths: string[], bucket = BUCKET): Promise<Record<string, string>> {
   if (paths.length === 0) return {};
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 60 * 60);
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrls(paths, 60 * 60);
   if (error) throw error;
   const urls: Record<string, string> = {};
   for (const item of data ?? []) {

@@ -7,6 +7,7 @@ supabase/.temp/
 supabase/.branches/
 apps/mobile/dist-local/
 apps/mobile/dist-preview/
+apps/mobile/dist-e2e/
 apps/mobile/preview.log
 scripts/preview/node_modules/
 scripts/preview/screens/

@@ -400,6 +400,61 @@ check('team sees the pin and the note on the material',
   await waitText(team, 'Ответ клиента') && (await text(team)).includes('📍 1 — Логотип крупнее') &&
   (await text(team)).includes('Как увидит клиент'));
 await team.screenshot({ path: `${SCREENS}task-marks.png`, fullPage: true });
+await team.locator('::-p-text(Разобрать задачу)').click();
+check('employee assistant breaks down the task', await waitText(team, 'Суть задачи'));
+await team.goto(BASE, { waitUntil: 'networkidle0' });
+await team.locator('::-p-text(Составить план на день)').click();
+check('employee assistant plans the day', await waitText(team, 'Главное сейчас'));
+await team.screenshot({ path: `${SCREENS}assistant-day.png`, fullPage: true });
+const clientView = await openAs('client@demo.am');
+await waitText(clientView, 'Мои заказы');
+check('client does not see the employee assistant', !(await text(clientView)).includes('Мой день'));
+check('client does not see AI agents', !(await text(clientView)).includes('AI-агенты'));
+
+// AI-агенты: пишем дизайнеру своими словами → «Отправить» → картинка сразу в чате → в задачу.
+const agentBoss = await openAs('manager@demo.am');
+await agentBoss.locator('::-p-text(🤖 AI-агенты)').click();
+await waitText(agentBoss, 'AI-менеджер');
+await agentBoss.locator('::-p-text(AI-дизайнер)').click();
+await waitText(agentBoss, 'Что сделать?');
+await agentBoss.type('textarea', 'Создай дизайн, где стоит человек, фон — море');
+await agentBoss.locator('::-p-text(➤ Отправить)').click();
+check('AI designer answers in the chat with an image',
+  await waitText(agentBoss, 'Демо', 15000) &&
+  await agentBoss.waitForSelector('img[src*="agent-files"]', { timeout: 5000 }).then(() => true, () => false));
+check('chat shows the request as typed', (await text(agentBoss)).includes('Создай дизайн, где стоит человек, фон — море'));
+await agentBoss.screenshot({ path: `${SCREENS}agent-chat-designer.png`, fullPage: true });
+await agentBoss.locator('::-p-text(📌 В задачу…)').click();
+await waitText(agentBoss, 'Отправить в задачу на проверку');
+await agentBoss.waitForSelector('[role="radio"]');
+await (await agentBoss.$$('[role="radio"]'))[0].click();
+await agentBoss.locator('::-p-text(Отправить на проверку)').click();
+check('chat result goes to a task', await waitText(agentBoss, 'Отправлено в задачу'));
+await agentBoss.locator('::-p-text(Отправлено в задачу)').click();
+check('task shows the AI version for review',
+  await waitText(agentBoss, 'Эту версию сделал AI-дизайнер') && (await text(agentBoss)).includes('На проверке'));
+await agentBoss.screenshot({ path: `${SCREENS}agent-task.png`, fullPage: true });
+
+// Копирайтер: пример запроса одним нажатием → текст в чате.
+await agentBoss.goto(`${BASE}/agents/copywriter`, { waitUntil: 'networkidle0' });
+await agentBoss.locator('::-p-text(Напиши пост для кофейни про осеннее меню)').click();
+await agentBoss.locator('::-p-text(➤ Отправить)').click();
+check('AI copywriter answers with text', await waitText(agentBoss, '#CafeAroma', 15000));
+
+// Менеджер-агент: план по заказу применяется только кнопкой.
+await agentBoss.goto(`${BASE}/agents/manager`, { waitUntil: 'networkidle0' });
+await waitText(agentBoss, 'Выберите заказ');
+await (await agentBoss.$$('[role="radio"]'))[0].click();
+await agentBoss.locator('::-p-text(🤖 Запустить)').click();
+check('AI manager prepares a plan', await waitText(agentBoss, 'Применить план', 15000) && (await text(agentBoss)).includes('Демо-бриф'));
+await agentBoss.locator('::-p-text(Применить план)').click();
+check('manager applies the plan', await waitText(agentBoss, 'План применён'));
+await agentBoss.screenshot({ path: `${SCREENS}agent-manager.png`, fullPage: true });
+
+// Сотрудник видит только свои задачи и не видит AI-менеджера.
+await team.goto(`${BASE}/agents`, { waitUntil: 'networkidle0' });
+check('employee sees role agents but not the AI manager',
+  await waitText(team, 'AI-копирайтер') && !(await text(team)).includes('AI-менеджер'));
 
 await reviewer.goto(`${BASE}/new-order`, { waitUntil: 'networkidle0' });
 await reviewer.locator('::-p-text(Instagram)').click();

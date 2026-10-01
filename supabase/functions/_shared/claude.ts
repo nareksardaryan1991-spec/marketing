@@ -9,14 +9,22 @@ export type ClaudeResult =
   | { ok: false; response: Response };
 
 // Один запрос к Claude. Ошибки превращаются в готовый HTTP-ответ для клиента.
-export async function askClaude(system: string, userPrompt: string): Promise<ClaudeResult> {
+// С schema ответ — JSON строго по этой схеме (structured outputs).
+export async function askClaude(
+  system: string,
+  userPrompt: string,
+  schema?: Record<string, unknown>,
+): Promise<ClaudeResult> {
   const client = new Anthropic({ apiKey: requireEnv('ANTHROPIC_API_KEY') });
   let response;
   try {
     response = await client.beta.messages.create({
       model: MODEL,
       max_tokens: 16000,
-      output_config: { effort: 'medium' },
+      output_config: {
+        effort: 'medium',
+        ...(schema ? { format: { type: 'json_schema' as const, schema } } : {}),
+      },
       // При отказе модели запрос автоматически повторяется на рекомендованной резервной модели.
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',

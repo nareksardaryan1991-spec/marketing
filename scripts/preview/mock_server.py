@@ -556,6 +556,190 @@ POST_METRICS = [{
 }]
 
 
+# ---------- AI-агенты (демо: настоящего AI в просмотре нет) ----------
+AGENT_RUNS = []
+AGENT_IDS = ('copywriter', 'designer', 'smm', 'video', 'photographer', 'targetologist', 'seo', 'manager')
+AGENT_NAMES = {'copywriter': 'AI-копирайтер', 'designer': 'AI-дизайнер', 'smm': 'AI-SMM', 'video': 'AI-видео',
+               'photographer': 'AI-фотограф', 'targetologist': 'AI-таргетолог', 'seo': 'AI-SEO'}
+AGENT_DEMO = {
+    'copywriter': 'Осень пришла — и тыквенный латте тоже 🎃☕\nТёплый, пряный и ровно такой, как вы любите. '
+                  'Заходите утром на Абовяна 12 — первые 10 гостей получат круассан в подарок!\n'
+                  '#CafeAroma #Ереван #тыквенныйлатте #кофе #осень',
+    'designer': 'Тыквенный латте уже здесь 🎃 Каждое утро с 8:00 на Абовяна 12.\n#CafeAroma #Ереван #осень',
+    'smm': '1) Текст: Осенний вкус каждое утро — тыквенный латте в Cafe Aroma ☕ #CafeAroma #Ереван\n'
+           '2) Лучшее время: вторник, 8:30 — аудитория едет на учёбу и работу.\n'
+           '3) План: неделя 1 — пост о латте, неделя 2 — сторис с опросом, неделя 3 — рилс, неделя 4 — пост-итог.',
+    'video': 'Сцена 1 (0–2 с): крупно пар над чашкой, текст «Осень в чашке».\n'
+             'Сцена 2 (2–8 с): бариста наливает латте-арт.\nСцена 3 (8–15 с): гость улыбается, текст «Абовяна 12».\n'
+             'Субтитры: «Осень в чашке. Тыквенный латте. Cafe Aroma».',
+    'photographer': '1. Чашка крупно сверху, на фоне листьев (4:5).\n2. Руки бариста с питчером (9:16).\n'
+                    '3. Столик у окна с десертом, мягкий утренний свет.\nРеквизит: тыква, корица, плед.',
+    'targetologist': 'Вариант 1: «Осень в чашке» — «Тыквенный латте ждёт вас на Абовяна 12». Кнопка: Проложить маршрут.\n'
+                     'Аудитория: Ереван, 20–35, интересы — кофе, студенты, офис.\nБюджет: 3 варианта по 33% на тест 5 дней.',
+    'seo': 'Описание профиля: Авторский кофе и десерты в центре Еревана ☕ Абовяна 12, с 8:00\n'
+           'Ключевые слова: кофейня Ереван, кофе с собой, завтрак центр, десерты Абовяна…\n'
+           'Хэштеги: #кофеереван #CafeAroma #ереван #yerevancafe',
+}
+_DEMO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent-designer-demo.png')
+AGENT_DEMO_PNG = open(_DEMO_PATH, 'rb').read() if os.path.exists(_DEMO_PATH) else demo_png(80, 100, *DEMO_COLORS[0])
+_SCENE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent-scene-demo.png')
+AGENT_SCENE_PNG = open(_SCENE_PATH, 'rb').read() if os.path.exists(_SCENE_PATH) else AGENT_DEMO_PNG
+# Картинки из чата с агентом (bucket agent-files): путь -> PNG.
+AGENT_FILES = {}
+AGENT_WORK_SECONDS = 2
+
+
+def start_agent(data):
+    """Запуск агента — те же проверки, что в Edge Function ai-agent (упрощённо)."""
+    profile = me()
+    agent = data.get('agent')
+    if not is_employee(profile['role']):
+        return None, 'forbidden'
+    if agent not in AGENT_IDS:
+        return None, 'bad request'
+    if data.get('mode') == 'request':
+        prompt = (data.get('prompt') or '').strip()
+        if not prompt or agent == 'manager':
+            return None, 'bad request'
+        run = {'id': 'ar000000-0000-4000-8000-%012d' % (len(AGENT_RUNS) + 1), 'agent': agent, 'status': 'running',
+               'chat': True, 'task_id': None, 'order_id': None, 'instructions': prompt[:2000], 'deliverable_id': None,
+               'result': None, 'error': None, 'images': 0, 'created_by': profile['id'], 'created_at': now_iso()}
+        AGENT_RUNS.append(run)
+        threading.Timer(AGENT_WORK_SECONDS, finish_request, [run]).start()
+        return run['id'], None
+    run = {'id': 'ar000000-0000-4000-8000-%012d' % (len(AGENT_RUNS) + 1), 'agent': agent, 'status': 'running', 'chat': False,
+           'task_id': None, 'order_id': None, 'instructions': (data.get('instructions') or '').strip() or None,
+           'deliverable_id': None, 'result': None, 'error': None, 'images': 0,
+           'created_by': profile['id'], 'created_at': now_iso()}
+    if agent == 'manager':
+        if not is_manager(profile['role']):
+            return None, 'only managers can use the AI manager'
+        if data.get('order_id') not in my_order_ids():
+            return None, 'order not found'
+        run['order_id'] = data['order_id']
+    else:
+        task = next((t for t in visible_tasks() if t['id'] == data.get('task_id')), None)
+        if not task or not (task['assignee_id'] == profile['id'] or is_manager(profile['role'])):
+            return None, 'task not found'
+        if task['status'] not in ('new', 'assigned', 'in_progress', 'changes_requested'):
+            return None, 'task is not in progress'
+        if any(r['task_id'] == task['id'] and r['status'] == 'running' for r in AGENT_RUNS):
+            return None, 'an AI agent is already working on this task'
+        run['task_id'] = task['id']
+    AGENT_RUNS.append(run)
+    threading.Timer(AGENT_WORK_SECONDS, finish_agent, [run, profile['id']]).start()
+    return run['id'], None
+
+
+def finish_agent(run, user_id):
+    if run['agent'] == 'manager':
+        workers = {'post': DESIGNER, 'story': DESIGNER, 'reel': FREELANCER}
+        plan = [{'task_id': t['id'], 'assignee_id': workers.get(t['service_id'], DESIGNER),
+                 'due_date': (NOW + timedelta(days=3 + 2 * i)).date().isoformat(),
+                 'brief': 'Демо-бриф: %s №%d — осеннее меню, акцент на тыквенный латте, тёплые цвета.' %
+                          (SVC[t['service_id']]['name']['ru'], t['number']),
+                 'reason': 'Демо: подходит по роли и загрузке.'}
+                for i, t in enumerate(x for x in TASKS if x['order_id'] == run['order_id'] and x['status'] in ('new', 'assigned'))]
+        run.update(status='done', result={'summary': 'Демо-план (в просмотре AI не подключён): брифы и сроки '
+                                                     'на ближайшие две недели.', 'tasks': plan})
+        return
+    task = next(t for t in TASKS if t['id'] == run['task_id'])
+    version = max([d['version'] for d in task['deliverables']] or [0]) + 1
+    files = []
+    if run['agent'] == 'designer':
+        path = '%s/ai-demo-%d.png' % (task['id'], version)
+        DELIVERABLE_FILES[path] = AGENT_DEMO_PNG
+        files.append(path)
+    deliverable = {'id': 'av%s-%d' % (task['id'][-4:], version), 'task_id': task['id'], 'version': version,
+                   'caption': AGENT_DEMO[run['agent']], 'files': files, 'agent': run['agent'],
+                   'note': '🤖 %s: демо-версия (в просмотре AI не подключён).' % AGENT_NAMES[run['agent']],
+                   'created_by': user_id, 'created_at': now_iso(), 'sent_to_client_at': None}
+    task['deliverables'].insert(0, deliverable)
+    task['status'] = 'internal_review'
+    task['assignee_id'] = task['assignee_id'] or user_id
+    run.update(status='done', deliverable_id=deliverable['id'], images=len(files),
+               result={'backgrounds': 'gradient'} if files else None)
+
+
+def finish_request(run):
+    """Демо-ответ в чате: дизайнеру — готовая картинка «человек у моря», остальным — пример текста."""
+    files = []
+    if run['agent'] == 'designer':
+        path = '%s/%s-1.png' % (run['created_by'], run['id'])
+        AGENT_FILES[path] = AGENT_SCENE_PNG
+        files.append(path)
+        text = 'Демо (в просмотре AI не подключён): так выглядит ответ на запрос «%s». ' \
+               'С ключом генератора картинка будет нарисована точно по описанию.' % run['instructions']
+    else:
+        text = 'Демо (в просмотре AI не подключён), ответ на «%s»:\n\n%s' % (run['instructions'], AGENT_DEMO[run['agent']])
+    run.update(status='done', images=len(files),
+               result={'text': text, 'caption': None, 'files': files, 'needs_image_key': False})
+
+
+def attach_run(data):
+    """Результат из чата → версия задачи на проверке (как режим attach в ai-agent)."""
+    profile = me()
+    run = next((r for r in AGENT_RUNS if r['id'] == data.get('run_id')), None)
+    if not run or not (run['created_by'] == profile['id'] or is_manager(profile['role'])):
+        return 'not found'
+    if not run['chat'] or run['status'] != 'done' or run['deliverable_id']:
+        return 'this result cannot be attached'
+    task = next((t for t in visible_tasks() if t['id'] == data.get('task_id')), None)
+    if not task or not (task['assignee_id'] == profile['id'] or is_manager(profile['role'])):
+        return 'task not found'
+    if task['status'] not in ('new', 'assigned', 'in_progress', 'changes_requested'):
+        return 'task is not in progress'
+    version = max([d['version'] for d in task['deliverables']] or [0]) + 1
+    files = []
+    for i, path in enumerate(run['result']['files']):
+        target = '%s/ai-chat-%d-%d.png' % (task['id'], version, i + 1)
+        DELIVERABLE_FILES[target] = AGENT_FILES[path]
+        files.append(target)
+    deliverable = {'id': 'av%s-%d' % (task['id'][-4:], version), 'task_id': task['id'], 'version': version,
+                   'caption': run['result']['caption'] or run['result']['text'], 'files': files, 'agent': run['agent'],
+                   'note': '🤖 %s: «%s»' % (AGENT_NAMES[run['agent']], run['instructions']),
+                   'created_by': profile['id'], 'created_at': now_iso(), 'sent_to_client_at': None}
+    task['deliverables'].insert(0, deliverable)
+    task['status'] = 'internal_review'
+    task['assignee_id'] = task['assignee_id'] or profile['id']
+    run.update(task_id=task['id'], deliverable_id=deliverable['id'])
+    return None
+
+
+def apply_manager_plan(run_id):
+    run = next((r for r in AGENT_RUNS if r['id'] == run_id), None)
+    if not is_manager(me()['role']):
+        return None, 'only managers can apply the plan'
+    if not run or run['agent'] != 'manager' or run['status'] != 'done':
+        return None, 'plan not found'
+    count = 0
+    for item in run['result']['tasks']:
+        task = next((t for t in TASKS if t['id'] == item['task_id'] and t['order_id'] == run['order_id']), None)
+        if task and task['status'] in ('new', 'assigned'):
+            task.update(assignee_id=item['assignee_id'] or task['assignee_id'], due_date=item['due_date'] or task['due_date'],
+                        brief=item['brief'] or task['brief'])
+            if task['status'] == 'new' and task['assignee_id']:
+                task['status'] = 'assigned'
+            count += 1
+    run['status'] = 'applied'
+    return count, None
+
+
+def visible_agent_runs():
+    profile = me()
+    tasks = {t['id']: t for t in visible_tasks()}
+    result = []
+    for run in AGENT_RUNS:
+        if not (run['created_by'] == profile['id'] or is_manager(profile['role']) or
+                (run['task_id'] in tasks and is_employee(profile['role']))):
+            continue
+        task = tasks.get(run['task_id'])
+        result.append({**run, 'tasks': {'service_id': task['service_id'], 'platform_id': task['platform_id'],
+                                        'number': task['number'], 'services': task['services'],
+                                        'businesses': {'name': task['businesses']['name']}} if task else None})
+    return sorted(result, key=lambda r: r['created_at'], reverse=True)
+
+
 # ---------- Выборки по таблицам (фильтры PostgREST — упрощённо) ----------
 def eq(q, key):
     value = q.get(key, [None])[0]
@@ -670,6 +854,16 @@ def rows(table, q):
         visible = {t['id'] for t in visible_tasks()}
         return sorted([a for a in APPROVALS if a['task_id'] in visible and (not tid or a['task_id'] == tid)],
                       key=lambda a: a['created_at'], reverse=True)
+    if table == 'agent_runs':
+        result = visible_agent_runs()
+        for key_ in ('agent', 'task_id', 'created_by'):
+            if eq(q, key_):
+                result = [r for r in result if r[key_] == eq(q, key_)]
+        if eq(q, 'chat'):
+            result = [r for r in result if r['chat'] == (eq(q, 'chat') == 'true')]
+        if 'chat.eq.false' in q.get('or', [''])[0]:
+            result = [r for r in result if not r['chat'] or r['task_id']]
+        return result
     if table == 'agency_settings':
         return [AGENCY] if role != 'pending' else []
     if table == 'promo_codes':
@@ -980,6 +1174,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if fn == 'owner_dashboard':
                 return self.reply(owner_dashboard()) if is_manager(me()['role']) else \
                     self.reply({'message': 'only managers can see the dashboard'}, 400)
+            if fn == 'apply_manager_plan':
+                count, error = apply_manager_plan(data.get('p_run_id'))
+                return self.reply({'message': error}, 400) if error else self.reply(count)
             if fn == 'my_conversations':
                 return self.reply(my_conversations())
             if fn == 'mark_conversation_read':
@@ -1014,6 +1211,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                      'active': True, 'created_at': now_iso()}
             PROMO_CODES.insert(0, promo)
             return self.reply([promo], 201)
+
+        # Картинки из чата с агентом: свои — автору, все — менеджерам.
+        if path == '/storage/v1/object/sign/agent-files' and self.command == 'POST':
+            mine = lambda p: p.split('/')[0] == me()['id'] or is_manager(me()['role'])
+            paths = [p for p in self.body().get('paths') or [] if mine(p) and p in AGENT_FILES]
+            return self.reply([{'path': p, 'error': None,
+                                'signedURL': '/object/sign/agent-files/%s?token=demo' % urllib.parse.quote(p)} for p in paths])
+        if path.startswith('/storage/v1/object/sign/agent-files/'):
+            png = AGENT_FILES.get(urllib.parse.unquote(path[len('/storage/v1/object/sign/agent-files/'):]))
+            if not png:
+                return self.reply({'error': 'not found'}, 404)
+            self.send_response(200)
+            self.cors()
+            self.send_header('Content-Type', 'image/png')
+            self.send_header('Content-Length', str(len(png)))
+            self.end_headers()
+            self.wfile.write(png)
+            return None
 
         # Материалы задач: подписанные ссылки и сами картинки.
         if path == '/storage/v1/object/sign/deliverables' and self.command == 'POST':
@@ -1069,6 +1284,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self.reply(data[0])
                 return self.reply({'message': 'not found', 'code': 'PGRST116'}, 406)
             return self.reply(data, headers={'Content-Range': '0-%d/%d' % (max(len(data) - 1, 0), len(data))})
+
+        if path == '/functions/v1/ai-agent' and self.command == 'POST':
+            data = self.body()
+            if data.get('mode') == 'attach':
+                error = attach_run(data)
+                return self.reply({'error': error}, 400) if error else self.reply({'ok': True})
+            run_id, error = start_agent(data)
+            return self.reply({'error': error}, 400) if error else self.reply({'run_id': run_id})
+
+        if path == '/functions/v1/ai-assistant' and self.command == 'POST':
+            # Настоящего AI в просмотре нет — показываем, как выглядит ответ помощника.
+            if self.body().get('task_id'):
+                text = ('Демо-ответ (в просмотровой версии AI не подключён).\n\n'
+                        '1. Суть задачи: пост для Cafe Aroma о новом сезонном напитке.\n'
+                        '2. Что важно клиенту: тёплые тона, логотип справа, без красного.\n'
+                        '3. Шаги: формат 1080×1350, фото напитка крупно, цена — уточнить у менеджера.\n'
+                        '4. Вопрос менеджеру: есть ли акция на первую неделю?')
+            else:
+                text = ('Демо-ответ (в просмотровой версии AI не подключён).\n\n'
+                        'Сначала — правки клиента по посту №2: заменить фон.\n'
+                        'Сегодня срок — сторис №1.\n'
+                        'Дальше — рилс №1 до пятницы.\n\n'
+                        'Главное сейчас: правки по посту №2.')
+            return self.reply({'text': text})
 
         # Хранилище файлов и серверные функции в просмотре не работают.
         return self.reply([] if path.startswith('/storage/') else {'error': 'недоступно в просмотровой версии'},

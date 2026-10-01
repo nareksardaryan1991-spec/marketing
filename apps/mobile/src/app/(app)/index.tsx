@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AssistantCard } from '@/components/AssistantCard';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { OrdersList } from '@/components/OrdersList';
 import { ChatsButton } from '@/components/ChatsButton';
@@ -15,7 +16,7 @@ import { useI18n } from '@/i18n';
 import { supabase } from '@/lib/supabase';
 import type { Business } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
-import { isManagerRole } from '@/lib/roles';
+import { isEmployeeRole, isManagerRole } from '@/lib/roles';
 
 export default function HomeScreen() {
   const { t } = useI18n();
@@ -42,6 +43,10 @@ export default function HomeScreen() {
           onPress={() => router.push('/board')}
         />
       )}
+      {isEmployeeRole(profile.role) && (
+        <Button title={`🤖 ${t('agents.title')}`} onPress={() => router.push('/agents')} />
+      )}
+      {isEmployeeRole(profile.role) && <AssistantCard />}
       {profile.role === 'client' && business && <ClientHome business={business} />}
       {isManagerRole(profile.role) && (
         <>

@@ -8,7 +8,16 @@ import { Button, Card, ErrorText, Field } from '../ui';
 import { taskStyles as styles } from './styles';
 
 // Внутренняя проверка менеджером перед отправкой клиенту.
-export function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void }) {
+export function ReviewPanel({
+  taskId,
+  agent,
+  onDone,
+}: {
+  taskId: string;
+  // Версию сделал AI-агент — напоминаем проверить внимательнее.
+  agent?: string | null;
+  onDone: () => void;
+}) {
   const { t } = useI18n();
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +46,11 @@ export function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => 
   return (
     <Card>
       <Text style={styles.cardTitle}>{t('task.reviewTitle')}</Text>
+      {agent ? (
+        <Text style={styles.muted}>
+          🤖 {t('agents.reviewHint', { name: t(`agents.names.${agent}`) })}
+        </Text>
+      ) : null}
       <Field label={t('task.comment')} multiline value={comment} onChangeText={setComment} />
       <ErrorText>{error}</ErrorText>
       <Button

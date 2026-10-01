@@ -434,6 +434,12 @@ verify_jwt = false
 [functions.ai-reply]
 verify_jwt = false
 
+[functions.ai-assistant]
+verify_jwt = false
+
+[functions.ai-agent]
+verify_jwt = false
+
 [functions.notify-dispatch]
 verify_jwt = false
 

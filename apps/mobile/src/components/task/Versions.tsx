@@ -22,6 +22,7 @@ export function Versions({ versions }: { versions: Deliverable[] }) {
           style={{ gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
           <Text style={styles.label}>
             {t('task.version', { n: v.version })} · {formatDate(v.created_at, language)}
+            {v.agent ? ` · 🤖 ${t(`agents.names.${v.agent}`)}` : ''}
           </Text>
           {v.caption ? (
             <Text selectable style={styles.text}>

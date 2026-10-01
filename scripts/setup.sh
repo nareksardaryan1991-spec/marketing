@@ -35,6 +35,7 @@ $SUPABASE db push
 
 say "4/7 Ключи сервисов (Enter — пропустить, можно добавить позже)"
 ANTHROPIC_API_KEY=$(ask_secret "Anthropic API key (для AI, console.anthropic.com): ")
+IMAGE_API_KEY=$(ask_secret "OpenAI API key (картинки AI-дизайнера, platform.openai.com): ")
 TELEGRAM_BOT_TOKEN=$(ask_secret "Telegram bot token (от @BotFather): ")
 INSTAGRAM_APP_ID=$(ask "Instagram App ID (developers.facebook.com): ")
 INSTAGRAM_APP_SECRET=""
@@ -54,6 +55,7 @@ secrets=(
   "TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET"
 )
 [ -n "$ANTHROPIC_API_KEY" ] && secrets+=("ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+[ -n "$IMAGE_API_KEY" ] && secrets+=("IMAGE_API_KEY=$IMAGE_API_KEY")
 [ -n "$TELEGRAM_BOT_TOKEN" ] && secrets+=("TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN")
 [ -n "$SITE_URL" ] && secrets+=("APP_RETURN_PREFIXES=marketing://,exp://,http://localhost,${SITE_URL%/}")
 [ -n "$INSTAGRAM_APP_ID" ] && secrets+=("INSTAGRAM_APP_ID=$INSTAGRAM_APP_ID" "INSTAGRAM_APP_SECRET=$INSTAGRAM_APP_SECRET")

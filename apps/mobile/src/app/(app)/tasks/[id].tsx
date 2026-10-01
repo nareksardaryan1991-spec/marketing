@@ -3,6 +3,9 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { TaskPreview } from '@/components/approval/TaskPreview';
+import { AgentLaunch } from '@/components/agents/AgentLaunch';
+import { AgentRuns } from '@/components/agents/AgentRuns';
+import { AssistantCard } from '@/components/AssistantCard';
 import { Screen } from '@/components/Screen';
 import { AssignPanel } from '@/components/task/AssignPanel';
 import { BriefCard } from '@/components/task/BriefCard';
@@ -16,6 +19,7 @@ import { TaskStatusBadge } from '@/components/TaskStatusBadge';
 import { colors } from '@/components/theme';
 import { ErrorText } from '@/components/ui';
 import { useI18n } from '@/i18n';
+import { AGENT_TASK_STATUSES, agentsForService } from '@/lib/agents';
 import { taskTitle } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
 import type { Business, Deliverable, Localized, Task, TaskComment } from '@/lib/types';
@@ -42,6 +46,7 @@ export default function TaskScreen() {
   const [error, setError] = useState<string | null>(null);
   // Меняется после каждого действия, чтобы панели пересоздались с новыми данными.
   const [revision, setRevision] = useState(0);
+  const [agentRefresh, setAgentRefresh] = useState(0);
 
   const load = useCallback(async () => {
     const [taskRes, versionsRes, commentsRes, approvalsRes] = await Promise.all([
@@ -102,6 +107,12 @@ export default function TaskScreen() {
   const isStaff = isTeamRole(profile.role);
   const isAssignee = task.assignee_id === profile.id;
   const canWork = isAssignee && WORKING_STATUSES.includes(task.status);
+  // Поручить агенту может тот же, кто может сдать версию: исполнитель или менеджер.
+  const taskAgents = agentsForService(task.service_id);
+  const canUseAgents =
+    (isAssignee || isManager) &&
+    taskAgents.length > 0 &&
+    (AGENT_TASK_STATUSES as readonly string[]).includes(task.status);
 
   return (
     <Screen>
@@ -126,8 +137,27 @@ export default function TaskScreen() {
         name={task.businesses?.name ?? ''}
       />
 
+      {(isStaff || isAssignee) && <AssistantCard taskId={task.id} />}
+
+      {canUseAgents && (
+        <AgentLaunch
+          key={`agent-${revision}`}
+          agents={taskAgents}
+          taskId={task.id}
+          onStarted={() => setAgentRefresh((k) => k + 1)}
+        />
+      )}
+      {(isStaff || isAssignee) && (
+        <AgentRuns taskId={task.id} refreshKey={agentRefresh} onFinished={reload} />
+      )}
+
       {isManager && task.status === 'internal_review' && (
-        <ReviewPanel key={`review-${revision}`} taskId={task.id} onDone={reload} />
+        <ReviewPanel
+          key={`review-${revision}`}
+          taskId={task.id}
+          agent={versions[0]?.agent ?? null}
+          onDone={reload}
+        />
       )}
 
       {canWork && (

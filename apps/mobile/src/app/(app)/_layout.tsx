@@ -65,6 +65,8 @@ export default function AppLayout() {
       <Stack.Screen name="dashboard" options={{ title: t('dashboard.title') }} />
       <Stack.Screen name="team-chat/index" options={{ title: t('chats.title') }} />
       <Stack.Screen name="team-chat/[id]" options={{ title: t('teamChat.title') }} />
+      <Stack.Screen name="agents/index" options={{ title: t('agents.title') }} />
+      <Stack.Screen name="agents/[agent]" options={{ title: t('agents.title') }} />
     </Stack>
   );
 }

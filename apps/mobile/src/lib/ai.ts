@@ -17,3 +17,19 @@ export async function generateDraft(opts: {
   });
   return result.text;
 }
+
+// Помощник сотрудника: план дня по своим задачам или разбор одной задачи.
+export async function askAssistant(opts: {
+  mode: 'my_day' | 'task';
+  language: Language;
+  taskId?: string;
+  question?: string;
+}): Promise<string> {
+  const result = await invokeFunction<{ text: string }>('ai-assistant', {
+    mode: opts.mode,
+    language: opts.language,
+    task_id: opts.taskId,
+    question: opts.question,
+  });
+  return result.text;
+}

@@ -884,4 +884,51 @@ check('every paid payment has a unique receipt number, latest is the biggest',
   receipts.at(-1).id === promoPay);
 check('unpaid payment has no receipt', (await as(null, `select count(*)::int n from payments where status <> 'succeeded' and receipt_no is not null`)).rows[0].n === 0);
 
+// ---------- AI-агенты ----------
+const [agentTask, planTask] = (await as(null, `select id, order_id from tasks where status = 'new' order by number limit 2`)).rows;
+const run = (await as(null, `insert into agent_runs (task_id, agent, created_by) values ($1, 'designer', $2) returning id`,
+  [agentTask.id, MANAGER])).rows[0].id;
+check('manager and team see the agent run', (await as(MANAGER, 'select * from agent_runs')).rows.length === 1 &&
+  (await as(DESIGNER, 'select * from agent_runs')).rows.length === 1);
+check('client, outsider and unassigned freelancer do not see agent runs',
+  (await as(CLIENT, 'select * from agent_runs')).rows.length === 0 &&
+  (await as(OTHER, 'select * from agent_runs')).rows.length === 0 &&
+  (await as(FREELANCER, 'select * from agent_runs')).rows.length === 0);
+await as(null, `insert into agent_runs (task_id, agent, created_by) values ($1, 'copywriter', $2)`, [agentTask.id, FREELANCER]);
+check('freelancer sees only own runs', (await as(FREELANCER, 'select agent from agent_runs')).rows.map(r => r.agent).join() === 'copywriter');
+await fails('employee cannot write agent runs directly', () => as(MANAGER, `insert into agent_runs (task_id, agent, created_by) values ($1, 'seo', $2)`, [agentTask.id, MANAGER]));
+await fails('nobody can mark own run as done', () => as(MANAGER, `update agent_runs set status = 'done' where id = $1 returning id`, [run]).then(r => { if (!r.rows.length) throw new Error('no rows'); }));
+await fails('employee cannot submit as an agent', () => as(MANAGER, `select submit_agent_deliverable($1, $2, 'designer', 'x')`, [agentTask.id, MANAGER]));
+await fails('agent files must be in the task folder', () => as(null, `select submit_agent_deliverable($1, $2, 'designer', 'x', array['other/a.png'])`, [agentTask.id, MANAGER]));
+await as(null, `select submit_agent_deliverable($1, $2, 'designer', 'AI пост', array[$3])`, [agentTask.id, MANAGER, `${agentTask.id}/ai-1.png`]);
+const agentDone = (await as(MANAGER, 'select status, assignee_id from tasks where id = $1', [agentTask.id])).rows[0];
+const agentVersion = (await as(MANAGER, 'select agent, created_by from deliverables where task_id = $1', [agentTask.id])).rows[0];
+check('agent version goes to manager review, launcher becomes responsible',
+  agentDone.status === 'internal_review' && agentDone.assignee_id === MANAGER &&
+  agentVersion.agent === 'designer' && agentVersion.created_by === MANAGER);
+await fails('agent cannot submit a task under review', () => as(null, `select submit_agent_deliverable($1, $2, 'designer', 'again')`, [agentTask.id, MANAGER]));
+
+const plan = JSON.stringify({ tasks: [{ task_id: planTask.id, assignee_id: DESIGNER, due_date: '2026-11-01', brief: 'AI бриф' }] });
+const planRun = (await as(null, `insert into agent_runs (order_id, agent, status, result, created_by) values ($1, 'manager', 'done', $2::jsonb, $3) returning id`,
+  [planTask.order_id, plan, MANAGER])).rows[0].id;
+await fails('designer cannot apply the manager plan', () => as(DESIGNER, 'select apply_manager_plan($1)', [planRun]));
+check('manager applies the plan', (await as(MANAGER, 'select apply_manager_plan($1) n', [planRun])).rows[0].n === 1);
+const planned = (await as(MANAGER, 'select status, assignee_id, due_date::text, brief from tasks where id = $1', [planTask.id])).rows[0];
+check('plan assigned the task with brief and due date',
+  planned.status === 'assigned' && planned.assignee_id === DESIGNER && planned.due_date === '2026-11-01' && planned.brief === 'AI бриф');
+await fails('plan cannot be applied twice', () => as(MANAGER, 'select apply_manager_plan($1)', [planRun]));
+
+// Свободный запрос из чата с агентом — без задачи; видят автор и менеджеры.
+await as(null, `insert into agent_runs (agent, chat, instructions, created_by, result) values ('designer', true, 'человек у моря', $1, '{"text":"ok","files":[]}')`, [DESIGNER]);
+check('free agent request is visible to its author and managers',
+  (await as(DESIGNER, `select * from agent_runs where chat`)).rows.length === 1 &&
+  (await as(MANAGER, `select * from agent_runs where chat`)).rows.length === 1);
+check('colleagues do not see someone else\'s free requests',
+  (await as(FREELANCER, `select * from agent_runs where instructions = 'человек у моря'`)).rows.length === 0);
+await db.query(`insert into storage.objects (bucket_id, name) values ('agent-files', $1), ('agent-files', $2)`,
+  [`${DESIGNER}/run-1.png`, `${FREELANCER}/run-2.png`]);
+const agentFolders = async (user) => (await as(user, `select name from storage.objects where bucket_id = 'agent-files' order by name`)).rows.map(r => r.name.split('/')[0]);
+check('agent files: own folder only, managers see all',
+  (await agentFolders(DESIGNER)).join() === DESIGNER && (await agentFolders(MANAGER)).length === 2 && (await agentFolders(CLIENT)).length === 0);
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');
