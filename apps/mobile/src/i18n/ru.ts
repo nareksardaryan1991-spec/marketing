@@ -9,7 +9,7 @@ export const ru = {
     required: 'Заполните обязательные поля',
   },
   auth: {
-    signInTitle: 'KUUU',
+    signInTitle: 'Вход',
     signUpTitle: 'Регистрация',
     subtitle: 'Маркетинг для вашего бизнеса',
     fullName: 'Имя и фамилия',

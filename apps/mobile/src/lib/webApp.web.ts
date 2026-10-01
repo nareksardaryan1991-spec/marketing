@@ -15,5 +15,5 @@ if (typeof document !== 'undefined' && !document.querySelector('link[rel="manife
   addToHead('link', { rel: 'apple-touch-icon', href: `${webBase}/apple-touch-icon.png` });
   addToHead('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' });
   addToHead('meta', { name: 'apple-mobile-web-app-title', content: 'Marketing' });
-  addToHead('meta', { name: 'theme-color', content: '#E53935' });
+  addToHead('meta', { name: 'theme-color', content: '#F6F7FB' });
 }

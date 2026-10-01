@@ -11,7 +11,7 @@ export const hy: Translations = {
     required: 'Լրացրեք պարտադիր դաշտերը',
   },
   auth: {
-    signInTitle: 'KUUU',
+    signInTitle: 'Մուտք',
     signUpTitle: 'Գրանցում',
     subtitle: 'Մարքեթինգ ձեր բիզնեսի համար',
     fullName: 'Անուն ազգանուն',

@@ -1,5 +1,5 @@
 export const colors = {
-  background: '#E53935',
+  background: '#F6F7FB',
   surface: '#FFFFFF',
   text: '#14151A',
   muted: '#6B7080',
