@@ -6,6 +6,8 @@ export const hy: Translations = {
     back: 'Հետ',
     save: 'Պահպանել',
     error: 'Սխալ',
+    networkError: 'Սերվերի հետ կապ չկա։ Ստուգեք ինտերնետը և նորից փորձեք։',
+    retry: 'Կրկնել',
     signOut: 'Դուրս գալ',
     language: 'Լեզու',
     required: 'Լրացրեք պարտադիր դաշտերը',

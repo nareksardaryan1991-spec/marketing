@@ -6,6 +6,8 @@ export const en: Translations = {
     back: 'Back',
     save: 'Save',
     error: 'Error',
+    networkError: 'Cannot reach the server. Check your connection and try again.',
+    retry: 'Try again',
     signOut: 'Sign out',
     language: 'Language',
     required: 'Please fill in the required fields',

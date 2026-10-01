@@ -7,7 +7,7 @@ import { colors } from '@/components/theme';
 import { Button } from '@/components/ui';
 import { LanguageProvider, useI18n } from '@/i18n';
 import '@/lib/webApp';
-import { AuthProvider, useAuth } from '@/providers/AuthProvider';
+import { AuthProvider, isNetworkError, useAuth } from '@/providers/AuthProvider';
 
 export default function RootLayout() {
   return (
@@ -23,7 +23,7 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { session, profile, business, loading, loadError, signOut } = useAuth();
+  const { session, profile, business, loading, loadError, refresh, signOut } = useAuth();
   const { t } = useI18n();
 
   const signedIn = !!session;
@@ -35,8 +35,9 @@ function RootNavigator() {
         {loadError ? (
           <>
             <Text style={styles.error}>
-              {t('common.error')}: {loadError}
+              {isNetworkError(loadError) ? t('common.networkError') : `${t('common.error')}: ${loadError}`}
             </Text>
+            <Button title={t('common.retry')} onPress={refresh} />
             <Button title={t('common.signOut')} variant="ghost" onPress={signOut} />
           </>
         ) : (

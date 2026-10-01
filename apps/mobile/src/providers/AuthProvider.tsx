@@ -17,6 +17,27 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Сбой сети, а не ответ сервера: Safari пишет «Load failed», Chrome — «Failed to fetch»,
+// Firefox — «NetworkError…», React Native — «Network request failed».
+export function isNetworkError(message: string | null | undefined) {
+  return !!message && /load failed|failed to fetch|networkerror|network request failed/i.test(message);
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function fetchUserData(userId: string) {
+  return Promise.all([
+    supabase.from('profiles').select('*').eq('id', userId).single<Profile>(),
+    supabase
+      .from('businesses')
+      .select('*')
+      .eq('owner_id', userId)
+      .order('created_at')
+      .limit(1)
+      .maybeSingle<Business>(),
+  ]);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -31,16 +52,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setBusiness(null);
       return;
     }
-    const [profileRes, businessRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', userId).single<Profile>(),
-      supabase
-        .from('businesses')
-        .select('*')
-        .eq('owner_id', userId)
-        .order('created_at')
-        .limit(1)
-        .maybeSingle<Business>(),
-    ]);
+    setLoadError(null);
+    let [profileRes, businessRes] = await fetchUserData(userId);
+    // На телефоне первый запрос часто обрывается (приложение только проснулось, сеть
+    // переключается) — повторяем пару раз, прежде чем показывать ошибку.
+    for (const delay of [1000, 3000]) {
+      if (!isNetworkError(profileRes.error?.message ?? businessRes.error?.message)) break;
+      await wait(delay);
+      [profileRes, businessRes] = await fetchUserData(userId);
+    }
     // Вход сохранён, а профиля больше нет (пользователя удалили или демо-данные сброшены) —
     // выходим, чтобы человек увидел экран входа, а не ошибку.
     if (profileRes.error?.code === 'PGRST116') {
@@ -75,6 +95,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadUserData]);
 
   const refresh = useCallback(() => loadUserData(session?.user.id), [loadUserData, session]);
+
+  // В браузере: сеть вернулась — пробуем загрузить снова, не дожидаясь нажатия.
+  useEffect(() => {
+    if (!isNetworkError(loadError) || typeof window === 'undefined' || !window.addEventListener) return;
+    const retry = () => refresh();
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [loadError, refresh]);
 
   const signOut = useCallback(async () => {
     await unregisterPush();
