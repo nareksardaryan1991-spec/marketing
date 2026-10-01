@@ -122,12 +122,9 @@
      для точки на видео клиент вводит сам (в браузере она берётся из плеера);
    - «Сохранить PDF» на телефоне (системное окно печати, `expo-print` — нужна новая сборка
      Android-приложения); в квитанцию стоит добавить реквизиты агентства.
-9. **Не отправлено (02.10.2026):** AI-помощник сотрудника и AI-агенты по ролям. Порядок выкладки:
-   заказчик выполняет `npx --yes supabase@2 db push` (миграция `0019_ai_agents.sql`), затем
-   `npx --yes supabase@2 functions deploy ai-assistant ai-agent ai-draft ai-reply` (общий код AI
-   изменился), задаёт ключи (`./scripts/setup.sh`: Anthropic и OpenAI для картинок) — потом push.
-   Там же агенты Claude Code для разработки (`.claude/agents/`: проверяющий, переводчик,
-   проверка доступа).
+9. **Выложено 02.10.2026:** AI-помощник сотрудника и AI-агенты — миграция `0019`, функции
+   `ai-assistant`, `ai-agent` (и обновлённые `ai-draft`, `ai-reply`) на сервере, код в GitHub.
+   Чтобы AI заработал, осталось задать ключи (`./scripts/setup.sh`: Anthropic и OpenAI для картинок).
 10. **Можно улучшить:** «печатает…» и «в сети» внутри чата идут через публичный realtime-канал
    (посторонний, зная id чата, увидит только имена печатающих, не текст) — закрыть приватными
    каналами Supabase. Просмотровый сервер `:8081` работает с версией от 30.09.2026: новые
@@ -137,8 +134,9 @@
 ### Сервер Supabase сейчас
 Проект `ijczwbgjhahitzphgxry` (https://ijczwbgjhahitzphgxry.supabase.co), привязан к этой папке
 (`supabase/.temp/project-ref`), Supabase CLI на компьютере уже вошёл в аккаунт.
-- База: применены миграции `0001`–`0018` (01.10.2026). Функции выложены, `notify-dispatch` —
-  с web push; `ai-reply` и `notify-dispatch` обновлены 01.10.2026.
+- База: применены миграции `0001`–`0019` (0019 — 02.10.2026). Функции выложены, `notify-dispatch` —
+  с web push; `ai-reply` и `notify-dispatch` обновлены 01.10.2026; `ai-assistant`, `ai-agent`,
+  `ai-draft`, `ai-reply` — 02.10.2026.
 - Секреты функций: `VAPID_*` (web push), `NOTIFY_WEBHOOK_SECRET`, `AUTOPUBLISH_SECRET`.
   В Vault базы: `project_url`, `notify_webhook_secret`, `autopublish_secret`.
 - **Ещё не заданы:** `TELEGRAM_BOT_TOKEN` (Telegram не работает), `ANTHROPIC_API_KEY` (AI),
