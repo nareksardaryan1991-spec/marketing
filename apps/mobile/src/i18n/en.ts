@@ -11,7 +11,7 @@ export const en: Translations = {
     required: 'Please fill in the required fields',
   },
   auth: {
-    signInTitle: 'Sign in',
+    signInTitle: 'KUUU',
     signUpTitle: 'Sign up',
     subtitle: 'Marketing for your business',
     fullName: 'Full name',
