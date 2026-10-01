@@ -2,6 +2,8 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Text } from 'react-native';
 
+import { AutoApproveSetting } from '@/components/admin/AutoApproveSetting';
+import { PromoCodes } from '@/components/admin/PromoCodes';
 import { Screen } from '@/components/Screen';
 import { PlatformPrices } from '@/components/PlatformPrices';
 import { ServiceEditor } from '@/components/ServiceEditor';
@@ -10,10 +12,13 @@ import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { supabase } from '@/lib/supabase';
 import type { Service } from '@/lib/types';
+import { useAuth } from '@/providers/AuthProvider';
 
 // Каталог услуг и цены (только менеджер; права проверяет база).
 export default function ServicesScreen() {
   const { t } = useI18n();
+  const { profile } = useAuth();
+  const isOwner = profile?.role === 'admin';
   const [services, setServices] = useState<Service[]>([]);
   const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
@@ -88,6 +93,8 @@ export default function ServicesScreen() {
         />
         <Button title={t('services.add')} onPress={add} loading={adding} />
       </Card>
+      {isOwner && <AutoApproveSetting />}
+      {isOwner && <PromoCodes />}
     </Screen>
   );
 }

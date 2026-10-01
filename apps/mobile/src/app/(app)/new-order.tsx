@@ -9,6 +9,7 @@ import { colors } from '@/components/theme';
 import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { formatAmd, localized } from '@/lib/format';
+import { promoDiscount, promoErrorKey, type AppliedPromo } from '@/lib/promo';
 import { serviceLabel } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
 import type { BillingType, Platform, PlatformService, PublishingMode, Service } from '@/lib/types';
@@ -31,6 +32,10 @@ export default function NewOrderScreen() {
   const [billing, setBilling] = useState<BillingType>('one_time');
   const [publishing, setPublishing] = useState<PublishingMode>('team');
   const [notes, setNotes] = useState('');
+  const [promoInput, setPromoInput] = useState('');
+  const [promo, setPromo] = useState<AppliedPromo | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [checkingPromo, setCheckingPromo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -78,7 +83,23 @@ export default function NewOrderScreen() {
       .filter((l) => l.platformId === platformId)
       .reduce((sum, l) => sum + l.quantity * l.price, 0);
   const itemsTotal = lines.reduce((sum, l) => sum + l.quantity * l.price, 0);
-  const total = itemsTotal + adBudgetAmd;
+  const discount = promoDiscount(promo, itemsTotal);
+  const total = itemsTotal - discount + adBudgetAmd;
+
+  const applyPromo = async () => {
+    if (!promoInput.trim()) return;
+    setCheckingPromo(true);
+    const { data, error } = await supabase.rpc('check_promo', { p_code: promoInput });
+    setCheckingPromo(false);
+    if (error) {
+      const key = promoErrorKey(error.message);
+      setPromoError(key ? t(key) : error.message);
+      setPromo(null);
+      return;
+    }
+    setPromoError(null);
+    setPromo(data as AppliedPromo);
+  };
 
   const togglePlatform = (platformId: string) =>
     setSelected((prev) =>
@@ -106,10 +127,12 @@ export default function NewOrderScreen() {
       p_publishing: publishing,
       p_ad_budget_amd: adBudgetAmd,
       p_notes: notes,
+      p_promo_code: promo?.code ?? null,
     });
     setSaving(false);
     if (error) {
-      setError(error.message);
+      const promoKey = promoErrorKey(error.message);
+      setError(promoKey ? t(promoKey) : error.message);
       return;
     }
     router.replace(`/orders/${data as string}`);
@@ -230,6 +253,48 @@ export default function NewOrderScreen() {
       <Field label={t('order.notes')} multiline value={notes} onChangeText={setNotes} />
 
       <Card>
+        {promo ? (
+          <View style={styles.totalRow}>
+            <Text style={styles.promoOk}>
+              🎟 {promo.code} ·{' '}
+              {t('promo.applied', {
+                value: promo.percent ? `${promo.percent}%` : formatAmd(promo.amount_amd ?? 0, language),
+              })}
+            </Text>
+            <Text
+              style={styles.link}
+              onPress={() => {
+                setPromo(null);
+                setPromoInput('');
+              }}>
+              {t('promo.remove')}
+            </Text>
+          </View>
+        ) : (
+          <>
+            <Field
+              label={t('promo.field')}
+              hint="AUTUMN10"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              value={promoInput}
+              onChangeText={(v) => {
+                setPromoInput(v);
+                setPromoError(null);
+              }}
+            />
+            <ErrorText>{promoError}</ErrorText>
+            <Button
+              title={t('promo.apply')}
+              variant="ghost"
+              onPress={applyPromo}
+              loading={checkingPromo}
+            />
+          </>
+        )}
+      </Card>
+
+      <Card>
         {catalog.platforms
           .filter((p) => selected.includes(p.id) && subtotal(p.id) > 0)
           .map((p) => (
@@ -250,6 +315,12 @@ export default function NewOrderScreen() {
             <Text style={styles.muted}>{formatAmd(adBudgetAmd, language)}</Text>
           </View>
         )}
+        {discount > 0 && (
+          <View style={styles.totalRow}>
+            <Text style={styles.promoOk}>{t('promo.discount')}</Text>
+            <Text style={styles.promoOk}>−{formatAmd(discount, language)}</Text>
+          </View>
+        )}
         <View style={styles.totalRow}>
           <Text style={styles.total}>{t('order.total')}</Text>
           <Text style={styles.total}>
@@ -257,6 +328,9 @@ export default function NewOrderScreen() {
             {billing === 'monthly' ? ` ${t('order.perMonth')}` : ''}
           </Text>
         </View>
+        {discount > 0 && billing === 'monthly' && (
+          <Text style={styles.muted}>{t('promo.firstMonthOnly')}</Text>
+        )}
       </Card>
 
       <ErrorText>{error}</ErrorText>
@@ -294,6 +368,8 @@ const styles = StyleSheet.create({
   serviceName: { fontSize: 16, fontWeight: '600', color: colors.text },
   price: { fontSize: 15, color: colors.primary, fontWeight: '500' },
   muted: { fontSize: 14, color: colors.muted },
+  promoOk: { fontSize: 15, fontWeight: '600', color: '#047857' },
+  link: { fontSize: 15, color: colors.primary },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   total: { fontSize: 18, fontWeight: '700', color: colors.text },
 });

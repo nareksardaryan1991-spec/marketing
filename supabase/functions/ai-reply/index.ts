@@ -40,8 +40,9 @@ Deno.serve(async (req) => {
     db.from('orders').select('status, notes, businesses(name, industry, tone)').eq('id', order_id).single(),
     db
       .from('messages')
-      .select('from_client, author_name, body, created_at')
+      .select('from_client, author_name, body, attachments, created_at')
       .eq('order_id', order_id)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(30),
     db.from('tasks').select('number, status, due_date, services(name), platforms(name)').eq('order_id', order_id),
@@ -61,7 +62,13 @@ Deno.serve(async (req) => {
     )
     .join('\n');
   const chat = history
-    .map((m) => `${m.from_client ? 'CLIENT' : 'TEAM'} (${m.author_name}): ${m.body}`)
+    .map((m) => {
+      // Сообщение без текста — только вложения: называем их, чтобы AI понимал, о чём речь.
+      const files = ((m.attachments ?? []) as { kind: string; name?: string }[])
+        .map((a) => `[${a.kind}${a.name ? `: ${a.name}` : ''}]`)
+        .join(' ');
+      return `${m.from_client ? 'CLIENT' : 'TEAM'} (${m.author_name}): ${[m.body, files].filter(Boolean).join(' ')}`;
+    })
     .join('\n');
 
   const prompt = [

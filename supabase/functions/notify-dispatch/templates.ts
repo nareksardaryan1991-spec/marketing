@@ -29,9 +29,34 @@ const T: Record<string, Record<Lang, Template>> = {
     en: (v) => `Client approved: ${v.service} #${v.number} — ${v.business}`,
   },
   client_changes: {
-    ru: (v) => `Клиент просит правки: ${v.service} #${v.number} — ${v.business}\n«${v.comment}»`,
-    hy: (v) => `Հաճախորդը ուղղումներ է խնդրում՝ ${v.service} #${v.number} — ${v.business}\n«${v.comment}»`,
-    en: (v) => `Client requested changes: ${v.service} #${v.number} — ${v.business}\n"${v.comment}"`,
+    ru: (v) =>
+      `Клиент просит правки: ${v.service} #${v.number} — ${v.business}` +
+      (v.comment ? `\n«${v.comment}»` : '') +
+      (Number(v.marks) > 0 ? `\n📍 Отметок на материале: ${v.marks}` : ''),
+    hy: (v) =>
+      `Հաճախորդը ուղղումներ է խնդրում՝ ${v.service} #${v.number} — ${v.business}` +
+      (v.comment ? `\n«${v.comment}»` : '') +
+      (Number(v.marks) > 0 ? `\n📍 Նշումներ նյութի վրա՝ ${v.marks}` : ''),
+    en: (v) =>
+      `Client requested changes: ${v.service} #${v.number} — ${v.business}` +
+      (v.comment ? `\n"${v.comment}"` : '') +
+      (Number(v.marks) > 0 ? `\n📍 Marks on the material: ${v.marks}` : ''),
+  },
+  client_auto_approved: {
+    ru: (v) => `Одобрено автоматически (клиент не ответил в срок): ${v.service} #${v.number} — ${v.business}`,
+    hy: (v) => `Հաստատվել է ավտոմատ (հաճախորդը ժամանակին չի պատասխանել)՝ ${v.service} #${v.number} — ${v.business}`,
+    en: (v) => `Approved automatically (no reply from the client in time): ${v.service} #${v.number} — ${v.business}`,
+  },
+  client_review_reminder: {
+    ru: (v) =>
+      `Ждут вашего согласования: ${v.count}. Откройте приложение → «На согласовании». ` +
+      `Если не ответить, материалы будут одобрены автоматически ${v.deadline}.`,
+    hy: (v) =>
+      `Ձեր հաստատմանն են սպասում՝ ${v.count}։ Բացեք հավելվածը → «Հաստատման համար»։ ` +
+      `Եթե չպատասխանեք, նյութերը կհաստատվեն ավտոմատ ${v.deadline}-ին։`,
+    en: (v) =>
+      `Waiting for your approval: ${v.count}. Open the app → "To approve". ` +
+      `If there is no reply, they will be approved automatically on ${v.deadline}.`,
   },
   client_message: {
     ru: (v) => `Сообщение от клиента ${v.business} (${v.author}):\n${v.preview}`,
@@ -67,6 +92,40 @@ const T: Record<string, Record<Lang, Template>> = {
     ru: (v) => `${v.channel === 'team' ? 'Чат команды — ' : ''}${v.author}:\n${v.preview}`,
     hy: (v) => `${v.channel === 'team' ? 'Թիմի չատ — ' : ''}${v.author}՝\n${v.preview}`,
     en: (v) => `${v.channel === 'team' ? 'Team chat — ' : ''}${v.author}:\n${v.preview}`,
+  },
+  incoming_call: {
+    ru: (v) => `${v.video === 'true' ? '🎥 Видеозвонок' : '📞 Звонок'} от ${v.author}${v.business ? ` (${v.business})` : ''}\nПрисоединиться: ${v.call_url}`,
+    hy: (v) => `${v.video === 'true' ? '🎥 Տեսազանգ' : '📞 Զանգ'} ${v.author}-ից${v.business ? ` (${v.business})` : ''}\nՄիանալ՝ ${v.call_url}`,
+    en: (v) => `${v.video === 'true' ? '🎥 Video call' : '📞 Call'} from ${v.author}${v.business ? ` (${v.business})` : ''}\nJoin: ${v.call_url}`,
+  },
+  task_due_soon: {
+    ru: (v) => `⏰ Завтра срок: ${v.service} #${v.number} — ${v.business}`,
+    hy: (v) => `⏰ Վաղը վերջնաժամկետն է՝ ${v.service} #${v.number} — ${v.business}`,
+    en: (v) => `⏰ Due tomorrow: ${v.service} #${v.number} — ${v.business}`,
+  },
+  task_due_today: {
+    ru: (v) => `⏰ Сегодня срок: ${v.service} #${v.number} — ${v.business}`,
+    hy: (v) => `⏰ Այսօր վերջնաժամկետն է՝ ${v.service} #${v.number} — ${v.business}`,
+    en: (v) => `⏰ Due today: ${v.service} #${v.number} — ${v.business}`,
+  },
+  task_overdue: {
+    ru: (v) => `🔴 Просрочено (срок ${v.due_date}): ${v.service} #${v.number} — ${v.business}`,
+    hy: (v) => `🔴 Ժամկետանց է (վերջնաժամկետ՝ ${v.due_date})՝ ${v.service} #${v.number} — ${v.business}`,
+    en: (v) => `🔴 Overdue (due ${v.due_date}): ${v.service} #${v.number} — ${v.business}`,
+  },
+  daily_digest: {
+    ru: (v) =>
+      `☀️ Доброе утро! Итоги вчерашнего дня:\nНовых заказов: ${v.new_orders}\nВыручка: ${v.revenue} ֏\n` +
+      `Сдано работ: ${v.submitted}, опубликовано: ${v.published}\n` +
+      `Сейчас: ждут проверки — ${v.to_review}, без исполнителя — ${v.unassigned}, просрочено — ${v.overdue}`,
+    hy: (v) =>
+      `☀️ Բարի լույս։ Երեկվա արդյունքները՝\nՆոր պատվերներ՝ ${v.new_orders}\nԵկամուտ՝ ${v.revenue} ֏\n` +
+      `Հանձնված աշխատանքներ՝ ${v.submitted}, հրապարակված՝ ${v.published}\n` +
+      `Հիմա՝ ստուգման սպասող՝ ${v.to_review}, առանց կատարողի՝ ${v.unassigned}, ժամկետանց՝ ${v.overdue}`,
+    en: (v) =>
+      `☀️ Good morning! Yesterday in numbers:\nNew orders: ${v.new_orders}\nRevenue: ${v.revenue} ֏\n` +
+      `Work submitted: ${v.submitted}, published: ${v.published}\n` +
+      `Now: waiting for review — ${v.to_review}, unassigned — ${v.unassigned}, overdue — ${v.overdue}`,
   },
   staff_signup: {
     ru: (v) => `Новый сотрудник ждёт роль: ${v.name} (${v.email}). Назначьте роль на экране «Команда».`,

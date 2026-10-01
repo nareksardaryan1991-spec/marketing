@@ -2,6 +2,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { TaskPreview } from '@/components/approval/TaskPreview';
 import { Screen } from '@/components/Screen';
 import { AssignPanel } from '@/components/task/AssignPanel';
 import { BriefCard } from '@/components/task/BriefCard';
@@ -57,9 +58,10 @@ export default function TaskScreen() {
       supabase.from('task_comments').select('*').eq('task_id', id).order('created_at'),
       supabase
         .from('approvals')
-        .select('id, decision, comment, created_at')
+        .select('id, deliverable_id, decision, comment, auto, created_at, approval_marks(position, file_path, x, y, at_seconds, note)')
         .eq('task_id', id)
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .order('position', { referencedTable: 'approval_marks' }),
     ]);
     setApprovals((approvalsRes.data as Approval[] | null) ?? []);
     setError(taskRes.error?.message ?? null);
@@ -117,7 +119,12 @@ export default function TaskScreen() {
         dueDate={task.due_date}
       />
 
-      <ClientFeedback approvals={approvals} />
+      <ClientFeedback
+        approvals={approvals}
+        versions={versions}
+        serviceId={task.service_id}
+        name={task.businesses?.name ?? ''}
+      />
 
       {isManager && task.status === 'internal_review' && (
         <ReviewPanel key={`review-${revision}`} taskId={task.id} onDone={reload} />
@@ -134,6 +141,14 @@ export default function TaskScreen() {
 
       {isStaff && (
         <PublishPanel key={`publish-${revision}`} task={task} onChanged={reload} />
+      )}
+
+      {versions[0] && versions[0].files.length > 0 && (
+        <TaskPreview
+          version={versions[0]}
+          serviceId={task.service_id}
+          name={task.businesses?.name ?? ''}
+        />
       )}
 
       <Versions versions={versions} />

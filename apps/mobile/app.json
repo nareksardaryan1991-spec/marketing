@@ -29,6 +29,12 @@
       "expo-localization",
       "expo-web-browser",
       "expo-notifications",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Разрешите доступ к микрофону, чтобы отправлять голосовые сообщения в чатах."
+        }
+      ],
       "@react-native-community/datetimepicker",
       "./plugins/with-release-signing"
     ],

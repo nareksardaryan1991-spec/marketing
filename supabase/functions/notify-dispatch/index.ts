@@ -100,6 +100,11 @@ Deno.serve(async (req) => {
   const vars = Object.fromEntries(
     Object.entries({ ...payload, service }).map(([k, v]) => [k, v == null ? '' : String(v)]),
   );
+  // Звонок: ссылка на комнату на сервере звонков (JITSI_URL, по умолчанию meet.jit.si).
+  if (payload.room) {
+    const base = (Deno.env.get('JITSI_URL') || 'https://meet.jit.si').replace(/\/+$/, '');
+    vars.call_url = `${base}/${payload.room}`;
+  }
   const message = renderNotification(record.kind, profile.language, vars);
   if (!message) return text('unknown kind');
 

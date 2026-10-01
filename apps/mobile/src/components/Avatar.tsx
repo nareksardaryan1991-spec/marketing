@@ -21,7 +21,8 @@ export function Avatar({
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
-    .map((word) => word[0].toUpperCase())
+    // Array.from — чтобы эмодзи (две половинки в UTF-16) не ломались.
+    .map((word) => Array.from(word)[0].toUpperCase())
     .join('');
   const box = { width: size, height: size, borderRadius: size / 2 };
 

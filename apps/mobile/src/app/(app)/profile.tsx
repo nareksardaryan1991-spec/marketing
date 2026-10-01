@@ -1,6 +1,9 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ChatBackground } from '@/components/chat/ChatBackground';
+import { WALLPAPERS } from '@/components/chat/chatTheme';
 import { ProfileHeader } from '@/components/ProfileHeader';
 import { Screen } from '@/components/Screen';
 import { colors } from '@/components/theme';
@@ -63,6 +66,21 @@ export default function ProfileScreen() {
       await removeProfilePhotos([old]);
     });
 
+  // Фон чатов: готовый узор или своё фото (старое своё фото удаляется).
+  const wallpaperPhoto = profile.chat_wallpaper?.startsWith('photo:') ? profile.chat_wallpaper.slice(6) : null;
+  const setWallpaper = (value: string) =>
+    run('wallpaper', async () => {
+      await update({ chat_wallpaper: value });
+      if (wallpaperPhoto) await removeProfilePhotos([wallpaperPhoto]);
+    });
+  const pickWallpaper = () =>
+    run('wallpaper', async () => {
+      const path = await pickProfilePhoto(profile.id, 'wallpaper');
+      if (!path) return;
+      await update({ chat_wallpaper: `photo:${path}` });
+      if (wallpaperPhoto) await removeProfilePhotos([wallpaperPhoto]);
+    });
+
   const saveInfo = () =>
     run('info', async () => {
       if (!fullName.trim()) throw new Error(t('profile.nameRequired'));
@@ -88,6 +106,19 @@ export default function ProfileScreen() {
       <ProfileHeader profile={profile} subtitle={t(`roles.${profile.role}`)} />
       <ErrorText>{error}</ErrorText>
       {notice && <Text style={styles.notice}>{notice}</Text>}
+
+      <Button
+        title={`🔔 ${t('notify.title')}`}
+        variant="ghost"
+        onPress={() => router.push('/notifications')}
+      />
+      {profile.role === 'client' && (
+        <Button
+          title={`🧾 ${t('receipts.title')}`}
+          variant="ghost"
+          onPress={() => router.push('/receipts')}
+        />
+      )}
 
       <Card>
         <Text style={styles.cardTitle}>{t('profile.photos')}</Text>
@@ -136,6 +167,44 @@ export default function ProfileScreen() {
             );
           })}
         </View>
+      </Card>
+
+      <Card>
+        <Text style={styles.cardTitle}>{t('chats.wallpaper')}</Text>
+        <View style={styles.wallpapers}>
+          {WALLPAPERS.map((w) => {
+            const value = `preset:${w.id}`;
+            const selected = (profile.chat_wallpaper ?? 'preset:classic') === value;
+            return (
+              <Pressable
+                key={w.id}
+                accessibilityRole="button"
+                accessibilityLabel={w.id}
+                accessibilityState={{ selected }}
+                onPress={() => setWallpaper(value)}
+                style={[styles.wallpaper, selected && styles.wallpaperSelected]}>
+                <ChatBackground value={value}>
+                  <View style={[styles.miniBubble, styles.miniTheirs]} />
+                  <View style={[styles.miniBubble, styles.miniMine]} />
+                </ChatBackground>
+              </Pressable>
+            );
+          })}
+          {wallpaperPhoto && (
+            <View style={[styles.wallpaper, styles.wallpaperSelected]}>
+              <ChatBackground value={profile.chat_wallpaper}>
+                <View style={[styles.miniBubble, styles.miniTheirs]} />
+                <View style={[styles.miniBubble, styles.miniMine]} />
+              </ChatBackground>
+            </View>
+          )}
+        </View>
+        <Button
+          title={t('chats.wallpaperPhoto')}
+          variant="ghost"
+          onPress={pickWallpaper}
+          loading={busy === 'wallpaper'}
+        />
       </Card>
 
       <Card>
@@ -191,4 +260,17 @@ const styles = StyleSheet.create({
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: 'transparent' },
   swatchSelected: { borderColor: colors.text },
+  wallpapers: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  wallpaper: {
+    width: 64,
+    height: 96,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  wallpaperSelected: { borderColor: '#2F8CF0' },
+  miniBubble: { height: 12, borderRadius: 6, marginHorizontal: 6, marginTop: 10 },
+  miniTheirs: { width: 34, backgroundColor: '#FFFFFF' },
+  miniMine: { width: 30, alignSelf: 'flex-end', backgroundColor: '#DCEEFF' },
 });

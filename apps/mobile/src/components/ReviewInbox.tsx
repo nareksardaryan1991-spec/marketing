@@ -5,38 +5,30 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 import { useI18n } from '@/i18n';
 import { supabase } from '@/lib/supabase';
 
-// Для клиента: сколько материалов ждут его решения.
+// Для клиента: сколько материалов ждут его решения — ведёт на экран «На согласовании».
 export function ReviewInbox() {
   const { t } = useI18n();
-  const [byOrder, setByOrder] = useState<[string, number][]>([]);
+  const [count, setCount] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       supabase
         .from('tasks')
-        .select('order_id')
+        .select('id', { count: 'exact', head: true })
         .eq('status', 'client_review')
-        .then(({ data }) => {
-          const counts = new Map<string, number>();
-          for (const row of data ?? []) {
-            counts.set(row.order_id, (counts.get(row.order_id) ?? 0) + 1);
-          }
-          setByOrder([...counts.entries()]);
-        });
+        .then(({ count }) => setCount(count ?? 0));
     }, []),
   );
 
+  if (count === 0) return null;
+
   return (
-    <>
-      {byOrder.map(([orderId, count]) => (
-        <Link key={orderId} href={`/orders/${orderId}`} asChild>
-          <Pressable style={styles.banner}>
-            <Text style={styles.text}>{t('review.waiting', { count })}</Text>
-            <Text style={styles.arrow}>›</Text>
-          </Pressable>
-        </Link>
-      ))}
-    </>
+    <Link href="/approvals" asChild>
+      <Pressable style={styles.banner}>
+        <Text style={styles.text}>{t('review.waiting', { count })}</Text>
+        <Text style={styles.arrow}>›</Text>
+      </Pressable>
+    </Link>
   );
 }
 

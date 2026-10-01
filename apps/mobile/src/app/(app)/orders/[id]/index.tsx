@@ -25,16 +25,25 @@ export default function OrderScreen() {
   const [order, setOrder] = useState<Order | null>(null);
   const [items, setItems] = useState<ItemWithService[]>([]);
   const [taskCount, setTaskCount] = useState(0);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [paying, setPaying] = useState<PaymentProvider | null>(null);
   const [testPaymentId, setTestPaymentId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [orderRes, itemsRes, tasksRes] = await Promise.all([
+    const [orderRes, itemsRes, tasksRes, paidRes] = await Promise.all([
       supabase.from('orders').select('*').eq('id', id).single<Order>(),
       supabase.from('order_items').select('*, services(name)').eq('order_id', id),
       supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('order_id', id),
+      supabase
+        .from('payments')
+        .select('id')
+        .eq('order_id', id)
+        .eq('status', 'succeeded')
+        .order('receipt_no')
+        .limit(1),
     ]);
+    setReceiptId(paidRes.data?.[0]?.id ?? null);
     setError(orderRes.error?.message ?? itemsRes.error?.message ?? null);
     setOrder(orderRes.data ?? null);
     setItems((itemsRes.data as ItemWithService[] | null) ?? []);
@@ -119,6 +128,14 @@ export default function OrderScreen() {
             <Text style={styles.text}>{formatAmd(item.line_total_amd, language)}</Text>
           </View>
         ))}
+        {order.discount_amd > 0 && (
+          <View style={styles.row}>
+            <Text style={styles.text}>
+              {t('promo.discount')} ({order.promo_code ?? '—'})
+            </Text>
+            <Text style={styles.text}>−{formatAmd(order.discount_amd, language)}</Text>
+          </View>
+        )}
         {order.ad_budget_amd > 0 && (
           <View style={styles.row}>
             <Text style={styles.text}>{t('order.adBudget')}</Text>
@@ -160,6 +177,14 @@ export default function OrderScreen() {
 
       {isOwner && !pending && (
         <Button title={t('order.repeat')} variant="ghost" onPress={repeat} />
+      )}
+
+      {isOwner && receiptId && (
+        <Button
+          title={`🧾 ${t('receipts.receiptButton')}`}
+          variant="ghost"
+          onPress={() => router.push(`/receipts/${receiptId}`)}
+        />
       )}
 
       {canChat && (

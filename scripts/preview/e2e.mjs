@@ -36,7 +36,9 @@ const check = (label, ok, extra = '') => {
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
-  args: ['--no-sandbox', '--lang=ru-RU', '--autoplay-policy=no-user-gesture-required'],
+  // Поддельный микрофон — для проверки голосовых.
+  args: ['--no-sandbox', '--lang=ru-RU', '--autoplay-policy=no-user-gesture-required',
+    '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
 });
 
 // Отдельный «пользователь» со своим хранилищем — как отдельное окно/телефон.
@@ -77,18 +79,35 @@ const waitText = (page, value, timeout = 10000) =>
     () => false,
   );
 
+// Текст сообщения в ленте (узел, где начинается текст пузыря).
+async function messageNode(page, body) {
+  const handle = await page.evaluateHandle((body) => {
+    const nodes = [...document.querySelectorAll('div')].filter(
+      (el) => el.firstChild?.nodeType === 3 && el.firstChild.textContent === body,
+    );
+    return nodes[0] ?? null; // первое — само сообщение, дальше могут быть цитаты
+  }, body);
+  return handle.asElement();
+}
+
 // Где стоит сообщение: справа (своё) или слева (чужое), и чья подпись над ним.
 async function bubble(page, body) {
-  return page.evaluate((body) => {
-    const node = [...document.querySelectorAll('div')].find(
-      (el) => el.children.length === 0 && el.textContent === body,
-    );
-    const box = node?.parentElement;
-    if (!box) return null;
-    const style = getComputedStyle(box);
-    const label = box.firstElementChild !== node ? box.firstElementChild.textContent : null;
-    return { side: style.alignSelf === 'flex-end' ? 'right' : 'left', label };
-  }, body);
+  const node = await messageNode(page, body);
+  if (!node) return null;
+  return node.evaluate((node) => {
+    const content = node.parentElement;
+    const box = content.parentElement;
+    const row = box.parentElement;
+    const label = box.firstElementChild !== content ? box.firstElementChild.textContent : null;
+    return { side: getComputedStyle(row).alignItems === 'flex-end' ? 'right' : 'left', label };
+  });
+}
+
+// Меню сообщения — правой кнопкой мыши, как на компьютере.
+async function menu(page, body, action) {
+  const node = await messageNode(page, body);
+  await node.click({ button: 'right' });
+  await page.locator(`::-p-text(${action})`).click();
 }
 
 async function send(page, message) {
@@ -118,7 +137,7 @@ const fromManager = `Привет от менеджера ${Date.now() % 10000}`
 await send(manager, fromManager);
 check('designer receives manager message without reopening', await waitText(designer, fromManager, 9000));
 const inDesigner = await bubble(designer, fromManager);
-check("manager's message is on the left for designer, signed by name", inDesigner?.side === 'left' && inDesigner?.label === 'Нарек', JSON.stringify(inDesigner));
+check("manager's message is on the left for designer, no name in a direct chat", inDesigner?.side === 'left' && !inDesigner?.label, JSON.stringify(inDesigner));
 const inManager = await bubble(manager, fromManager);
 check("manager's own message is on the right, without name", inManager?.side === 'right' && !inManager?.label, JSON.stringify(inManager));
 
@@ -132,9 +151,100 @@ await new Promise((r) => setTimeout(r, 500));
 check('manager hears the signal for a new message', (await sounds(manager)) > managerSounds);
 check('designer hears no signal for own message', (await sounds(designer)) === designerSounds);
 const reply = await bubble(manager, fromDesigner);
-check("designer's reply is on the left for manager, signed «Ани Саргсян»", reply?.side === 'left' && reply?.label === 'Ани Саргсян', JSON.stringify(reply));
+check("designer's reply is on the left for manager", reply?.side === 'left' && !reply?.label, JSON.stringify(reply));
+check('manager sees two ticks once the designer has read', await waitText(manager, '✓✓', 9000));
+
+// Как в Telegram: ответ, правка, реакция, закреп, удаление.
+await menu(designer, fromManager, 'Ответить');
+check('reply banner shows the quoted message', await waitText(designer, 'Ответ: Нарек'));
+const answer = `Цитирую ${Date.now() % 10000}`;
+await send(designer, answer);
+check('reply shows a quote for the other side', await waitText(manager, answer, 9000) &&
+  (await manager.evaluate((a, q) => {
+    const node = [...document.querySelectorAll('div')].find((el) => el.firstChild?.nodeType === 3 && el.firstChild.textContent === a);
+    return node?.parentElement.innerText.includes(q);
+  }, answer, fromManager)));
+
+await menu(manager, fromManager, 'Изменить');
+const editInput = await manager.waitForSelector('textarea');
+check('edit puts the text into the field', (await editInput.evaluate((el) => el.value)) === fromManager);
+await editInput.click({ count: 3 });
+const edited = `${fromManager} (исправлено)`;
+await editInput.type(edited);
+await manager.keyboard.press('Enter');
+check('edited message shows «изменено» for the other side', await waitText(designer, edited, 9000) && await waitText(designer, 'изменено'));
+
+await menu(designer, edited, '👍');
+check('reaction is visible to the author', await manager.waitForFunction(() => document.body.innerText.includes('👍'), { timeout: 9000 }).then(() => true, () => false));
+
+await menu(manager, fromDesigner, 'Закрепить');
+check('pinned message bar appears', await waitText(manager, 'Закреплённое сообщение'));
+check('pinned for the other side too', await waitText(designer, 'Закреплённое сообщение', 9000));
+
+const oops = `Ошибочное ${Date.now() % 10000}`;
+await send(manager, oops);
+await waitText(designer, oops, 9000);
+manager.once('dialog', (dialog) => dialog.accept());
+await menu(manager, oops, 'Удалить');
+check('deleted message disappears for everyone',
+  await designer.waitForFunction((o) => !document.body.innerText.includes(o), { timeout: 9000 }, oops).then(() => true, () => false) &&
+  await waitText(designer, 'Сообщение удалено'));
+
+// Фото и голосовое.
+await manager.locator('[aria-label="Прикрепить"]').click();
+const [photoChooser] = await Promise.all([
+  manager.waitForFileChooser(),
+  manager.locator('::-p-text(Фото или видео)').click(),
+]);
+await photoChooser.accept([new URL('../../apps/mobile/assets/icon.png', import.meta.url).pathname]);
+await manager.locator('[aria-label="Отправить"]').click();
+const photoSrc = await designer.waitForSelector('img[src*="/object/sign/chat-files/"]', { timeout: 9000 }).then(
+  (img) => img.evaluate((el) => el.src), () => null);
+check('photo arrives and loads for the other side', !!photoSrc && (await fetch(photoSrc)).ok, photoSrc);
+check('photo shows in the chat list as «Фото»', await (async () => {
+  await manager.goto(`${BASE}/chats`, { waitUntil: 'networkidle0' });
+  return waitText(manager, 'Фото');
+})());
+await manager.goto(`${BASE}/team-chat/${DIRECT_CHAT}`, { waitUntil: 'networkidle0' });
+
+await designer.locator('[aria-label="Записать голосовое"]').click();
+check('recording started', await waitText(designer, 'Запись'));
+await new Promise((r) => setTimeout(r, 1500));
+await designer.locator('[aria-label="Отправить"]').click();
+check('voice message arrives with a player', await manager.waitForSelector('[aria-label="play"]', { timeout: 9000 }).then(() => true, () => false));
 await manager.screenshot({ path: `${SCREENS}chat-manager.png` });
 await designer.screenshot({ path: `${SCREENS}chat-designer.png` });
+
+// Звонок: кнопка 🎥 сразу открывает комнату Jitsi, у собеседника — «Присоединиться».
+const callTab = (page) =>
+  browser.waitForTarget((t) => t.url().startsWith('https://meet.jit.si/marketing-') && t.opener() === page.target(), { timeout: 9000 })
+    .then(async (t) => {
+      const url = t.url();
+      // Закрываем вкладку звонка: иначе окно чата уходит в фон и перестаёт отрисовываться.
+      await (await t.page())?.close().catch(() => {});
+      await page.bringToFront();
+      return url;
+    }, () => null);
+const [started] = await Promise.all([callTab(manager), manager.locator('[aria-label="Видеозвонок"]').click()]);
+check('video call opens a Jitsi room with the caller name', !!started && started.includes('config.startWithVideoMuted=false') && started.includes('displayName'), started);
+check('the other side sees the call with «Присоединиться»', await waitText(designer, 'Присоединиться', 9000));
+const [joined] = await Promise.all([callTab(designer), designer.locator('::-p-text(Присоединиться)').click()]);
+check('joining opens the same room', !!joined && joined.split('#')[0] === started.split('#')[0], joined);
+await designer.screenshot({ path: `${SCREENS}chat-call.png` });
+
+// Общий чат: имена авторов над сообщениями; список чатов; компьютер — список и чат рядом.
+await manager.goto(`${BASE}/team-chat/00000000-0000-4000-8000-00000000c0de`, { waitUntil: 'networkidle0' });
+const teamLine = await bubble(manager, 'Буду. Пост №3 уже на проверке 👍');
+check('team chat shows the author name in colour', teamLine?.side === 'left' && teamLine?.label === 'Ани Саргсян', JSON.stringify(teamLine));
+check('team chat header counts members', await waitText(manager, 'участников'));
+await manager.setViewport({ width: 1280, height: 800 });
+await manager.goto(`${BASE}/chats`, { waitUntil: 'networkidle0' });
+check('chat list has order, team and direct chats',
+  await waitText(manager, 'Cafe Aroma') && await waitText(manager, 'Общий чат команды') && await waitText(manager, 'Ани Саргсян'));
+check('wide screen shows a placeholder until a chat is picked', await waitText(manager, 'Выберите чат'));
+await manager.locator('::-p-text(Общий чат команды)').click();
+check('picked chat opens next to the list', await waitText(manager, 'Всем доброе утро'));
+await manager.screenshot({ path: `${SCREENS}chats-wide.png` });
 
 // 2. Новый сотрудник ждёт роль, владелец назначает — у сотрудника открывается работа.
 const newbie = await openAs('newbie@demo.am');
@@ -150,7 +260,7 @@ await admin.locator('::-p-text(Фотограф)').click();
 check('role assigned', await waitText(admin, 'Фотограф'));
 
 await newbie.locator('::-p-text(Проверить)').click();
-check('employee gets workspace after role is assigned', await waitText(newbie, 'Чат команды'));
+check('employee gets workspace after role is assigned', await waitText(newbie, 'Чаты'));
 
 const managerTeam = await openAs('manager@demo.am');
 await managerTeam.goto(`${BASE}/team`, { waitUntil: 'networkidle0' });
@@ -231,7 +341,90 @@ check('other people cannot upload into my folder',
   })).status === 403);
 await cabinet.screenshot({ path: `${SCREENS}home-client.png` });
 
-// 7. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
+// 7. Панель владельца и доска задач.
+const owner = await openAs('admin@demo.am');
+check('home has the owner dashboard button', await waitText(owner, 'Панель владельца'));
+await owner.goto(`${BASE}/dashboard`, { waitUntil: 'networkidle0' });
+check('owner sees revenue this month', await waitText(owner, 'Прошлый месяц') && (await text(owner)).includes('63 000'));
+check('dashboard shows team workload and overdue tasks',
+  await waitText(owner, 'Нагрузка команды') && (await text(owner)).includes('Ани Саргсян') &&
+  await waitText(owner, 'Просроченные задачи') && (await text(owner)).includes('просрочено ·'));
+await owner.screenshot({ path: `${SCREENS}dashboard.png`, fullPage: true });
+const boss = await openAs('manager@demo.am');
+await boss.goto(`${BASE}/dashboard`, { waitUntil: 'networkidle0' });
+check('manager sees the dashboard without money', await waitText(boss, 'Нагрузка команды') && !(await text(boss)).includes('Прошлый месяц'));
+await boss.setViewport({ width: 1400, height: 820 });
+await boss.goto(`${BASE}/board`, { waitUntil: 'networkidle0' });
+check('board shows columns with tasks', await waitText(boss, 'На проверке') && await waitText(boss, 'Опубликовано') && (await text(boss)).includes('TikTok'));
+await boss.screenshot({ path: `${SCREENS}board-wide.png` });
+await boss.locator('::-p-text(🔴 Просроченные)').click();
+check('overdue filter leaves only overdue tasks',
+  await boss.waitForFunction(() => !document.body.innerText.includes('TikTok'), { timeout: 5000 }).then(() => true, () => false) &&
+  (await text(boss)).includes('Facebook'));
+const worker = await openAs('designer@demo.am');
+await worker.goto(`${BASE}/board`, { waitUntil: 'networkidle0' });
+check('employee board shows only own tasks', await waitText(worker, 'Facebook') && !(await text(worker)).includes('TikTok'));
+await worker.screenshot({ path: `${SCREENS}board-phone.png` });
+
+// 7б. Согласование «как в Instagram»: превью, точка правки, «Одобрить всё», сетка;
+//     промокод в заказе, квитанция; настройки владельца.
+const reviewer = await openAs('client@demo.am');
+check('home shows how many materials wait', await waitText(reviewer, 'Ждут вашего согласования: 3'));
+await reviewer.locator('::-p-text(Ждут вашего согласования)').click();
+check('approvals screen: approve all and auto-approval deadline',
+  await waitText(reviewer, 'Одобрить всё (3)') && (await text(reviewer)).includes('Одобрится автоматически'));
+check('previews show the material images', await reviewer.waitForFunction(
+  () => [...document.images].filter((i) => i.src.includes('deliverables') && i.naturalWidth > 0).length >= 3,
+  { timeout: 8000 }).then(() => true, () => false));
+await reviewer.screenshot({ path: `${SCREENS}approvals.png`, fullPage: true });
+await reviewer.locator('::-p-text(Попросить правки)').click();
+await waitText(reviewer, 'Нажмите на место в кадре');
+const frame = await (await reviewer.$('img[src*="deliverables"]')).boundingBox();
+await reviewer.mouse.click(frame.x + frame.width * 0.3, frame.y + frame.height * 0.6);
+await reviewer.waitForSelector('textarea[placeholder="Что поменять в этом месте?"]');
+await reviewer.type('textarea[placeholder="Что поменять в этом месте?"]', 'Логотип крупнее');
+await reviewer.screenshot({ path: `${SCREENS}approval-mark.png`, fullPage: true });
+await reviewer.locator('::-p-text(Отправить правки)').click();
+check('changes with a pin sent, two materials left', await waitText(reviewer, 'Одобрить всё (2)'));
+await reviewer.locator('::-p-text(Одобрить всё (2))').click();
+await reviewer.locator('::-p-text(Точно одобрить все 2?)').click();
+check('approve all leaves nothing waiting', await waitText(reviewer, 'ничего не ждёт вашего решения'));
+await reviewer.locator('::-p-text(Сетка профиля)').click();
+check('profile grid shows approved upcoming and published posts',
+  await waitText(reviewer, 'одобрено') && (await reviewer.$$('img[src*="deliverables"]')).length >= 2);
+await reviewer.screenshot({ path: `${SCREENS}approvals-grid.png` });
+
+const team = await openAs('designer@demo.am');
+await team.goto(`${BASE}/tasks/t0000000-0000-4000-8000-000000000002`, { waitUntil: 'networkidle0' });
+check('team sees the pin and the note on the material',
+  await waitText(team, 'Ответ клиента') && (await text(team)).includes('📍 1 — Логотип крупнее') &&
+  (await text(team)).includes('Как увидит клиент'));
+await team.screenshot({ path: `${SCREENS}task-marks.png`, fullPage: true });
+
+await reviewer.goto(`${BASE}/new-order`, { waitUntil: 'networkidle0' });
+await reviewer.locator('::-p-text(Instagram)').click();
+await reviewer.locator('[aria-label="+"]').click();
+await reviewer.type('input[placeholder="AUTUMN10"]', 'autumn10');
+await reviewer.locator('::-p-text(Применить)').click();
+check('promo code gives a discount before payment',
+  await waitText(reviewer, 'скидка 10%') && (await text(reviewer)).includes('−800'));
+await reviewer.screenshot({ path: `${SCREENS}new-order-promo.png`, fullPage: true });
+await reviewer.locator('::-p-text(Убрать)').click();
+await reviewer.type('input[placeholder="AUTUMN10"]', 'NOPE');
+await reviewer.locator('::-p-text(Применить)').click();
+check('unknown promo code is explained', await waitText(reviewer, 'Такого промокода нет'));
+
+await reviewer.goto(`${BASE}/receipts`, { waitUntil: 'networkidle0' });
+await reviewer.locator('::-p-text(Квитанция № 1)').click();
+check('receipt shows what was paid', await waitText(reviewer, 'Сохранить PDF') && (await text(reviewer)).includes('63 000') &&
+  (await text(reviewer)).includes('Idram'));
+await reviewer.screenshot({ path: `${SCREENS}receipt.png`, fullPage: true });
+
+await owner.goto(`${BASE}/services`, { waitUntil: 'networkidle0' });
+check('owner manages auto-approval and promo codes',
+  await waitText(owner, 'Автоодобрение') && await waitText(owner, 'AUTUMN10') && (await text(owner)).includes('использован 3 из 50'));
+
+// 8. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);
 await ghost.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });
 const ghostInputs = await ghost.$$('input');

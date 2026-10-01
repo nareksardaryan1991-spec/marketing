@@ -1,10 +1,11 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { colors } from '@/components/theme';
 import { useI18n } from '@/i18n';
 import { registerPush } from '@/lib/push';
+import { supabase } from '@/lib/supabase';
 import { useNotificationTaps } from '@/lib/useNotificationTaps';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -19,6 +20,21 @@ export default function AppLayout() {
     if (userId) registerPush(userId, Platform.OS !== 'web');
   }, [userId]);
   useNotificationTaps(profile?.role === 'client');
+
+  // «В сети» для чатов: раз в минуту, пока приложение открыто на экране.
+  useEffect(() => {
+    if (!userId) return;
+    const touch = () => {
+      if (AppState.currentState === 'active') supabase.rpc('touch_last_seen').then();
+    };
+    touch();
+    const timer = setInterval(touch, 60_000);
+    const subscription = AppState.addEventListener('change', touch);
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [userId]);
 
   return (
     <Stack
@@ -41,7 +57,13 @@ export default function AppLayout() {
       <Stack.Screen name="business" options={{ title: t('business.title') }} />
       <Stack.Screen name="services" options={{ title: t('services.title') }} />
       <Stack.Screen name="reports" options={{ title: t('reports.title') }} />
-      <Stack.Screen name="team-chat/index" options={{ title: t('teamChat.title') }} />
+      <Stack.Screen name="chats/index" options={{ title: t('chats.title') }} />
+      <Stack.Screen name="board" options={{ title: t('board.title') }} />
+      <Stack.Screen name="approvals" options={{ title: t('approvals.title') }} />
+      <Stack.Screen name="receipts/index" options={{ title: t('receipts.title') }} />
+      <Stack.Screen name="receipts/[id]" options={{ title: t('receipts.title') }} />
+      <Stack.Screen name="dashboard" options={{ title: t('dashboard.title') }} />
+      <Stack.Screen name="team-chat/index" options={{ title: t('chats.title') }} />
       <Stack.Screen name="team-chat/[id]" options={{ title: t('teamChat.title') }} />
     </Stack>
   );

@@ -542,4 +542,346 @@ check('other user cannot delete my photo', (await as(CLIENT, `select 1 from stor
 await as(CLIENT, `delete from storage.objects where bucket_id='avatars' and name=$1`, [`${CLIENT}/avatar-1.jpg`]);
 check('owner deletes own photo', (await as(CLIENT, `select 1 from storage.objects where bucket_id='avatars'`)).rows.length === 0);
 
+// ---- Чат как в Telegram ----
+const upload = (user, path) => as(user, `insert into storage.objects (bucket_id, name) values ('chat-files', $1)`, [path]);
+const chatFiles = async (user) => (await as(user, `select name from storage.objects where bucket_id='chat-files'`)).rows.map(r => r.name);
+const sendOrder = async (user, fields) => {
+  const cols = Object.keys(fields);
+  const vals = Object.values(fields).map(v => typeof v === 'object' && v !== null ? JSON.stringify(v) : v);
+  const sql = `insert into messages (order_id, ${cols.join(', ')}) values ($1, ${cols.map((c, i) => `$${i + 2}${c === 'attachments' ? '::jsonb' : ''}`).join(', ')}) returning *`;
+  return (await as(user, sql, [orderId, ...vals])).rows[0];
+};
+
+// Файлы
+const photo = `order/${orderId}/${CLIENT}/p1.jpg`;
+await upload(CLIENT, photo);
+await fails('chat file: not into someone else folder', () => upload(CLIENT, `order/${orderId}/${MANAGER}/x.jpg`));
+await fails('chat file: not into foreign order chat', () => upload(OTHER, `order/${orderId}/${OTHER}/x.jpg`));
+await fails('chat file: freelancer not into team chat', () => upload(FREELANCER, `team/${TEAM}/${FREELANCER}/x.jpg`));
+await fails('chat file: bad path', () => upload(CLIENT, `order/${orderId}/${CLIENT}/a/b.jpg`));
+check('team cannot read a file before it is sent', !(await chatFiles(DESIGNER)).includes(photo));
+
+await db.exec('delete from notifications');
+const pm = await sendOrder(CLIENT, { attachments: [{ path: photo, kind: 'photo', name: 'p1.jpg', size: 1000, width: 800, height: 600, junk: 'x' }] });
+check('photo-only message, unknown fields dropped', pm.body === '' && pm.attachments.length === 1 && pm.attachments[0].junk === undefined && pm.attachments[0].width === 800);
+check('photo notification preview is an icon', (await notes()).some(x => x.kind === 'client_message' && x.payload.preview === '📷'));
+check('team reads the file once it is sent', (await chatFiles(DESIGNER)).includes(photo));
+check('freelancer cannot read order chat file', !(await chatFiles(FREELANCER)).includes(photo));
+await fails('attachment must be uploaded', () => sendOrder(CLIENT, { attachments: [{ path: `order/${orderId}/${CLIENT}/missing.jpg`, kind: 'photo' }] }));
+const managerFile = `order/${orderId}/${MANAGER}/m1.pdf`;
+await upload(MANAGER, managerFile);
+await fails('cannot attach someone else unsent file', () => sendOrder(CLIENT, { attachments: [{ path: managerFile, kind: 'file' }] }));
+await fails('unknown attachment kind', () => sendOrder(CLIENT, { attachments: [{ path: photo, kind: 'virus' }] }));
+await fails('at most 10 attachments', () => sendOrder(CLIENT, { attachments: Array(11).fill({ path: photo, kind: 'photo' }) }));
+await fails('text or attachment required', () => sendOrder(CLIENT, { body: '  ', attachments: [] }));
+
+// Ответ и «Переслано от» нельзя подделать
+const teamMsgId = (await as(MANAGER, 'select id from team_messages where conversation_id=$1 limit 1', [TEAM])).rows[0].id;
+const reply = await sendOrder(DESIGNER, { body: 'Красивое фото', reply_to_id: pm.id });
+check('reply keeps link to the message', reply.reply_to_id === pm.id);
+const badReply = (await as(DESIGNER, `insert into messages (order_id, body, reply_to_id) values ($1, 'x', $2) returning id, reply_to_id`, [orderId, pm.id])).rows[0];
+check('reply to same chat ok', badReply.reply_to_id === pm.id);
+const crossReply = (await as(MANAGER, `insert into team_messages (conversation_id, body, reply_to_id) values ($1, 'x', $2) returning reply_to_id`, [TEAM, teamMsgId])).rows[0];
+check('reply inside team chat ok', crossReply.reply_to_id === teamMsgId);
+const dmReply = (await as(MANAGER, `insert into team_messages (conversation_id, body, reply_to_id) values ($1, 'x', $2) returning reply_to_id`, [dm, teamMsgId])).rows[0];
+check('reply to a message of another chat is dropped', dmReply.reply_to_id === null);
+check('forwarded_from cannot be set directly', (await sendOrder(CLIENT, { body: 'x', forwarded_from: 'Илон' })).forwarded_from === null);
+
+// Правка
+const own = await sendOrder(CLIENT, { body: 'Опечтака' });
+await fails('only the author edits', () => as(MANAGER, `select edit_chat_message('order', $1, 'x')`, [own.id]));
+await as(CLIENT, `select edit_chat_message('order', $1, '  Опечатка  ')`, [own.id]);
+let ownRow = (await as(DESIGNER, 'select body, edited_at from messages where id=$1', [own.id])).rows[0];
+check('author edits, everyone sees edited mark', ownRow.body === 'Опечатка' && ownRow.edited_at);
+await fails('cannot edit to empty text', () => as(CLIENT, `select edit_chat_message('order', $1, '  ')`, [own.id]));
+await as(CLIENT, `update messages set body = 'hack' where id = $1`, [own.id]);
+check('messages cannot be updated directly', (await as(CLIENT, 'select body from messages where id=$1', [own.id])).rows[0].body === 'Опечатка');
+
+// Удаление: у всех исчезает, оригинал видит только владелец
+await fails('manager cannot delete a client message', () => as(MANAGER, `select delete_chat_message('order', $1)`, [own.id]));
+await as(CLIENT, `select delete_chat_message('order', $1)`, [own.id]);
+ownRow = (await as(DESIGNER, 'select body, deleted_at from messages where id=$1', [own.id])).rows[0];
+check('deleted message is empty for everyone', ownRow.body === '' && ownRow.deleted_at);
+check('client and manager do not see the original',
+  (await as(CLIENT, 'select * from deleted_chat_messages')).rows.length === 0 &&
+  (await as(MANAGER, 'select * from deleted_chat_messages')).rows.length === 0);
+check('owner sees the deleted original', (await as(ADMIN, 'select body from deleted_chat_messages where message_id=$1', [own.id])).rows[0]?.body === 'Опечатка');
+await fails('cannot delete twice', () => as(CLIENT, `select delete_chat_message('order', $1)`, [own.id]));
+await fails('cannot edit a deleted message', () => as(CLIENT, `select edit_chat_message('order', $1, 'снова')`, [own.id]));
+await as(ADMIN, `select delete_chat_message('order', $1)`, [badReply.id]);
+check('owner can delete any message', !!(await as(DESIGNER, 'select deleted_at from messages where id=$1', [badReply.id])).rows[0].deleted_at);
+await as(CLIENT, `select delete_chat_message('order', $1)`, [pm.id]);
+check('file of a deleted message: team loses access, owner keeps it',
+  !(await chatFiles(DESIGNER)).includes(photo) && (await chatFiles(ADMIN)).includes(photo));
+
+// Пересылка
+const photo2 = `order/${orderId}/${CLIENT}/p2.jpg`;
+await upload(CLIENT, photo2);
+const pm2 = await sendOrder(CLIENT, { body: 'Логотип', attachments: [{ path: photo2, kind: 'photo' }] });
+const fwdId = (await as(MANAGER, `select forward_chat_message('order', $1, 'team', $2) as id`, [pm2.id, dm])).rows[0].id;
+const fwd = (await as(FREELANCER, 'select * from team_messages where id=$1', [fwdId])).rows[0];
+check('forwarded copy: text, file and original author', fwd.body === 'Логотип' && fwd.forwarded_from === 'Anna' && fwd.author_id === MANAGER && fwd.attachments[0].path === photo2);
+check('recipient of a forward can open the file', (await chatFiles(FREELANCER)).includes(photo2));
+await fails('client cannot forward into team chat', () => as(CLIENT, `select forward_chat_message('order', $1, 'team', $2)`, [pm2.id, TEAM]));
+await fails('cannot forward a message you cannot see', () => as(FREELANCER, `select forward_chat_message('order', $1, 'team', $2)`, [pm2.id, dm]));
+const fwd2 = (await as(FREELANCER, `select forward_chat_message('team', $1, 'team', $2) as id`, [fwdId, dm])).rows[0].id;
+check('forward of a forward keeps the first author', (await as(MANAGER, 'select forwarded_from from team_messages where id=$1', [fwd2])).rows[0].forwarded_from === 'Anna');
+check('forward flag does not leak into next insert', (await sendOrder(CLIENT, { body: 'после' })).forwarded_from === null);
+
+// Реакции
+await as(DESIGNER, `select react_to_message('order', $1, '👍')`, [pm2.id]);
+await as(CLIENT, `select react_to_message('order', $1, '❤️')`, [pm2.id]);
+let reacts = (await as(CLIENT, 'select user_name, emoji from chat_reactions where message_id=$1 order by emoji', [pm2.id])).rows;
+check('client sees reactions with names: ' + JSON.stringify(reacts), reacts.length === 2 && reacts.some(r => r.emoji === '👍' && r.user_name === 'd@x'));
+await as(DESIGNER, `select react_to_message('order', $1, '👍')`, [pm2.id]);
+check('same reaction again removes it', (await as(CLIENT, 'select count(*)::int n from chat_reactions where message_id=$1', [pm2.id])).rows[0].n === 1);
+await as(CLIENT, `select react_to_message('order', $1, '🔥')`, [pm2.id]);
+reacts = (await as(CLIENT, 'select emoji from chat_reactions where message_id=$1', [pm2.id])).rows;
+check('one reaction per person, new one replaces', reacts.length === 1 && reacts[0].emoji === '🔥');
+await fails('freelancer cannot react in order chat', () => as(FREELANCER, `select react_to_message('order', $1, '👍')`, [pm2.id]));
+check('outsider sees no reactions', (await as(OTHER, 'select * from chat_reactions')).rows.length === 0);
+await fails('reactions cannot be inserted directly', () => as(CLIENT, `insert into chat_reactions (message_id, chat, chat_id, user_id, emoji) values ($1, 'order', $2, $3, 'x')`, [pm2.id, orderId, CLIENT]));
+
+// Закреплённое
+await as(CLIENT, `select pin_chat_message('order', $1, $2)`, [orderId, pm2.id]);
+let info = (await as(DESIGNER, `select chat_info('order', $1) i`, [orderId])).rows[0].i;
+check('pinned message visible to team, peer is the client', info.pinned?.id === pm2.id && info.pinned.body === 'Логотип' && info.peer.name === 'Anna');
+await fails('cannot pin a message of another chat', () => as(MANAGER, `select pin_chat_message('team', $1, $2)`, [TEAM, pm2.id]));
+await fails('outsider cannot pin', () => as(OTHER, `select pin_chat_message('order', $1, null)`, [orderId]));
+await as(CLIENT, `select delete_chat_message('order', $1)`, [pm2.id]);
+info = (await as(CLIENT, `select chat_info('order', $1) i`, [orderId])).rows[0].i;
+check('deleting unpins and drops reactions',
+  info.pinned === null && (await as(CLIENT, 'select count(*)::int n from chat_reactions where message_id=$1', [pm2.id])).rows[0].n === 0);
+check('client sees the team, not people', info.peer.name === undefined && 'last_seen_at' in info.peer);
+
+// Прочитано и «был в сети»
+await as(DESIGNER, `select mark_chat_read('order', $1)`, [orderId]);
+check('client sees that team has read', !!(await as(CLIENT, `select chat_info('order', $1) i`, [orderId])).rows[0].i.others_read_at);
+check('team does not count other team members as the reader', (await as(MANAGER, `select chat_info('order', $1) i`, [orderId])).rows[0].i.others_read_at === null);
+await as(CLIENT, `select mark_chat_read('order', $1)`, [orderId]);
+check('team sees that the client has read', !!(await as(MANAGER, `select chat_info('order', $1) i`, [orderId])).rows[0].i.others_read_at);
+await fails('freelancer cannot mark order chat read', () => as(FREELANCER, `select mark_chat_read('order', $1)`, [orderId]));
+await fails('outsider gets no chat info', () => as(OTHER, `select chat_info('order', $1)`, [orderId]));
+await as(CLIENT, 'select touch_last_seen()');
+check('team sees when the client was online', !!(await as(MANAGER, `select chat_info('order', $1) i`, [orderId])).rows[0].i.peer.last_seen_at);
+const dmInfo = (await as(FREELANCER, `select chat_info('team', $1) i`, [dm])).rows[0].i;
+check('direct chat info names the colleague', dmInfo.peer.name === 'Boss' && dmInfo.peer.role === 'manager');
+check('team chat info counts members', (await as(MANAGER, `select chat_info('team', $1) i`, [TEAM])).rows[0].i.members >= 3);
+
+// Список чатов
+const cl = (await as(CLIENT, 'select * from my_chats()')).rows;
+check('client list: only own order chats', cl.length > 0 && cl.every(r => r.chat === 'order') && cl.some(r => r.id === orderId));
+const fc = (await as(FREELANCER, 'select * from my_chats()')).rows;
+check('freelancer list: only the direct chat', fc.length === 1 && fc[0].kind === 'direct' && fc[0].title === 'Boss');
+const dc = (await as(DESIGNER, 'select * from my_chats()')).rows;
+const dOrder = dc.find(r => r.id === orderId);
+check('designer list: team chat and order chat with business and client',
+  dc.some(r => r.kind === 'team') && dOrder && dOrder.title === 'Cafe' && dOrder.peer_id === CLIENT && !dc.some(r => r.id === dm));
+check('list sorted by last message', dc.every((r, i) => i === 0 || !r.last_message_at || new Date(dc[i - 1].last_message_at) >= new Date(r.last_message_at)));
+const mgrOrder = (await as(MANAGER, 'select * from my_chats()')).rows.find(r => r.id === orderId);
+check('deleted messages are not unread; last message info present', mgrOrder.last_body === 'после' && mgrOrder.last_author_id === CLIENT);
+
+// Фон чата
+await as(CLIENT, `update profiles set chat_wallpaper='preset:mint' where id=$1`, [CLIENT]);
+await as(CLIENT, `update profiles set chat_wallpaper=$2 where id=$1`, [CLIENT, `photo:${CLIENT}/wall-1.jpg`]);
+check('wallpaper saved', (await as(CLIENT, 'select chat_wallpaper from profiles where id=$1', [CLIENT])).rows[0].chat_wallpaper === `photo:${CLIENT}/wall-1.jpg`);
+await fails('wallpaper must be a preset or a photo path', () => as(CLIENT, `update profiles set chat_wallpaper='javascript:alert(1)' where id=$1`, [CLIENT]));
+
+// ---- Звонки ----
+const ROOM = 'marketing-abcdefghij0123456789';
+await db.exec('delete from notifications');
+const call = (await as(MANAGER, `insert into team_messages (conversation_id, call) values ($1, $2::jsonb) returning *`,
+  [dm, JSON.stringify({ room: ROOM, video: true, url: 'https://evil.example/x' })])).rows[0];
+check('call message without text, extra fields dropped', call.body === '' && call.call.room === ROOM && call.call.video === true && call.call.url === undefined);
+let cn = await notes();
+check('call notifies the other member as incoming_call with room',
+  cn.length === 1 && cn[0].user_id === FREELANCER && cn[0].kind === 'incoming_call' && cn[0].payload.room === ROOM && cn[0].payload.video === true);
+await fails('room name must be ours', () => as(MANAGER, `insert into team_messages (conversation_id, call) values ($1, $2::jsonb)`,
+  [dm, JSON.stringify({ room: 'https://evil.example/x', video: false })]));
+await fails('video must be true or false', () => as(MANAGER, `insert into team_messages (conversation_id, call) values ($1, $2::jsonb)`,
+  [dm, JSON.stringify({ room: ROOM, video: 'yes' })]));
+check('audio call by default', (await as(MANAGER, `insert into team_messages (conversation_id, call) values ($1, $2::jsonb) returning call`,
+  [dm, JSON.stringify({ room: ROOM })])).rows[0].call.video === false);
+check('chat list shows the last message as a call',
+  (await as(FREELANCER, 'select last_attachment from my_chats() where id=$1', [dm])).rows[0].last_attachment === 'call');
+
+await db.exec('delete from notifications');
+await as(CLIENT, `insert into messages (order_id, call) values ($1, $2::jsonb)`, [orderId, JSON.stringify({ room: ROOM, video: false })]);
+cn = await notes();
+check('client call rings managers and owner', cn.length === 2 && cn.every(x => x.kind === 'incoming_call' && [MANAGER, ADMIN].includes(x.user_id) && x.payload.order_id === orderId));
+await db.exec('delete from notifications');
+const teamCall = (await as(DESIGNER, `insert into messages (order_id, call) values ($1, $2::jsonb) returning id`, [orderId, JSON.stringify({ room: ROOM, video: true })])).rows[0].id;
+cn = await notes();
+check('team call rings the client', cn.length === 1 && cn[0].user_id === CLIENT && cn[0].kind === 'incoming_call');
+await fails('outsider cannot call into an order chat', () => as(OTHER, `insert into messages (order_id, call) values ($1, $2::jsonb)`, [orderId, JSON.stringify({ room: ROOM, video: true })]));
+await as(DESIGNER, `select delete_chat_message('order', $1)`, [teamCall]);
+check('deleted call has no join button', (await as(CLIENT, 'select call from messages where id=$1', [teamCall])).rows[0].call === null);
+
+// ---- Сроки задач, панель владельца, утренняя сводка ----
+await db.exec(`update tasks set due_date = null, due_reminded_on = null`);
+const [tA, tB, tC, tD, tE, tF] = (await as(null, 'select id from tasks order by created_at, id limit 6')).rows.map(r => r.id);
+await db.exec(`
+  update tasks set status = 'in_progress', assignee_id = '${DESIGNER}', due_date = yerevan_today() + 1 where id = '${tA}';
+  update tasks set status = 'assigned', assignee_id = '${FREELANCER}', due_date = yerevan_today() where id = '${tB}';
+  update tasks set status = 'changes_requested', assignee_id = '${DESIGNER}', due_date = yerevan_today() - 2 where id = '${tC}';
+  update tasks set status = 'new', assignee_id = null, due_date = yerevan_today() - 1 where id = '${tD}';
+  update tasks set status = 'client_review', assignee_id = '${DESIGNER}', due_date = yerevan_today() - 3 where id = '${tE}';
+  update tasks set status = 'in_progress', assignee_id = '${DESIGNER}', due_date = yerevan_today() + 5 where id = '${tF}';
+  delete from notifications;
+`);
+await fails('client cannot run reminders', () => as(CLIENT, 'select process_due_reminders()'));
+check('reminders sent for 4 tasks', (await as(null, 'select process_due_reminders() n')).rows[0].n === 4);
+const rn = await notes();
+const who = (kind) => rn.filter(x => x.kind === kind).map(x => x.user_id).sort();
+check('due tomorrow → assignee', JSON.stringify(who('task_due_soon')) === JSON.stringify([DESIGNER]));
+check('due today → assignee', JSON.stringify(who('task_due_today')) === JSON.stringify([FREELANCER]));
+check('overdue → assignee and managers; unassigned overdue → managers only: ' + who('task_overdue').length,
+  who('task_overdue').length === 5 && rn.filter(x => x.kind === 'task_overdue' && x.payload.task_id === tD).every(x => [MANAGER, ADMIN].includes(x.user_id)));
+check('reminder names the task and due date', rn.every(x => x.payload.task_id && x.payload.due_date && x.payload.business));
+check('client review and far deadlines are not reminded', !rn.some(x => [tE, tF].includes(x.payload.task_id)));
+check('no second reminder the same day', (await as(null, 'select process_due_reminders() n')).rows[0].n === 0);
+
+await fails('client cannot see the dashboard', () => as(CLIENT, 'select owner_dashboard()'));
+await fails('designer cannot see the dashboard', () => as(DESIGNER, 'select owner_dashboard()'));
+const md = (await as(MANAGER, 'select owner_dashboard() d')).rows[0].d;
+check('manager dashboard hides money', md.revenue_month === null && md.revenue_prev_month === null && md.is_admin === false);
+check('dashboard counts overdue open tasks: ' + md.tasks.overdue, md.tasks.overdue === 2);
+const designerOpen = (await as(null, `select count(*)::int n from tasks where assignee_id = $1 and is_open_task_status(status)`, [DESIGNER])).rows[0].n;
+const dRow = md.workload.find(w => w.id === DESIGNER);
+check('workload per employee: designer open and overdue', dRow?.open === designerOpen && dRow.overdue === 1);
+check('owner is not in the workload list', !md.workload.some(w => w.id === ADMIN));
+const ad = (await as(ADMIN, 'select owner_dashboard() d')).rows[0].d;
+const monthSum = (await as(null, `select coalesce(sum(amount_amd), 0)::int s from payments where status = 'succeeded'
+  and updated_at >= yerevan_day_start(date_trunc('month', yerevan_today())::date)`)).rows[0].s;
+check('owner sees revenue this month: ' + ad.revenue_month, ad.is_admin === true && Number(ad.revenue_month) === monthSum && monthSum > 0);
+check('orders by status', Object.values(ad.orders).reduce((a, b) => a + Number(b), 0) === (await as(null, 'select count(*)::int n from orders')).rows[0].n);
+
+await db.exec('delete from notifications');
+await fails('client cannot run the digest', () => as(CLIENT, 'select process_daily_digest()'));
+await as(null, 'select process_daily_digest()');
+const dg = await notes();
+check('digest goes to the owner only', dg.length === 1 && dg[0].user_id === ADMIN && dg[0].kind === 'daily_digest' && Number(dg[0].payload.overdue) === 2);
+
+// ---- Согласование: «одобрить всё», точки правок, автоодобрение ----
+const payOrder = async (id) => {
+  const total = (await as(null, 'select total_amd from orders where id=$1', [id])).rows[0].total_amd;
+  const pid = (await as(null, `insert into payments (order_id, provider, amount_amd) values ($1, 'test', $2) returning id`, [id, total])).rows[0].id;
+  await as(null, `select mark_payment_succeeded($1, null, '{}')`, [pid]);
+  return pid;
+};
+const apOrder = (await as(CLIENT, `select create_order($1, '[{"service_id":"post","platform_id":"instagram","quantity":3}]'::jsonb, 'one_time', 'team') as id`, [bizId])).rows[0].id;
+await payOrder(apOrder);
+const [r1, r2, r3] = (await as(null, 'select id from tasks where order_id=$1 order by number', [apOrder])).rows.map(r => r.id);
+await db.exec(`
+  insert into deliverables (task_id, version, caption, files, created_by)
+    select id, 1, 'Пост', array[id || '/a.jpg', id || '/b.mp4'], '${DESIGNER}' from tasks where order_id = '${apOrder}';
+  update tasks set status = 'client_review', assignee_id = '${DESIGNER}' where order_id = '${apOrder}';
+  delete from notifications;
+`);
+check('sending to the client starts the response clock',
+  (await as(CLIENT, 'select client_review_since from tasks where id=$1', [r1])).rows[0].client_review_since !== null);
+
+await fails('changes need a comment or a mark', () => as(CLIENT, `select client_decide($1, false, ' ', '[]'::jsonb)`, [r1]));
+await fails('mark must point to a file of the latest version', () => as(CLIENT, `select client_decide($1, false, null, $2::jsonb)`,
+  [r1, JSON.stringify([{ file_path: r2 + '/a.jpg', x: 0.5, y: 0.5, note: 'тут' }])]));
+await fails('mark needs a note', () => as(CLIENT, `select client_decide($1, false, null, $2::jsonb)`,
+  [r1, JSON.stringify([{ file_path: r1 + '/a.jpg', x: 0.5, y: 0.5, note: ' ' }])]));
+await fails('mark must be inside the picture', () => as(CLIENT, `select client_decide($1, false, null, $2::jsonb)`,
+  [r1, JSON.stringify([{ file_path: r1 + '/a.jpg', x: 1.5, y: 0.5, note: 'тут' }])]));
+await as(CLIENT, `select client_decide($1, false, null, $2::jsonb)`, [r1, JSON.stringify([
+  { file_path: r1 + '/a.jpg', x: 0.25, y: 0.75, note: ' Логотип крупнее ' },
+  { file_path: r1 + '/b.mp4', x: 0.5, y: 0.1, at_seconds: 3.5, note: 'Убрать надпись' },
+])]);
+const marks = (await as(DESIGNER, 'select * from approval_marks where task_id=$1 order by position', [r1])).rows;
+check('changes by marks only are saved with the approval', marks.length === 2 && marks[0].note === 'Логотип крупнее' && marks[0].position === 1 && marks[1].at_seconds === 3.5 && marks[1].position === 2 &&
+  (await as(CLIENT, 'select status from tasks where id=$1', [r1])).rows[0].status === 'changes_requested');
+check('client sees own marks, outsider and unrelated freelancer do not',
+  (await as(CLIENT, 'select * from approval_marks')).rows.length === 2 &&
+  (await as(OTHER, 'select * from approval_marks')).rows.length === 0 &&
+  (await as(FREELANCER, 'select * from approval_marks')).rows.length === 0);
+n = await notes();
+check('team is told how many marks were left', n.length > 0 && n.every(x => x.kind === 'client_changes' && x.payload.marks === 2));
+await fails('client cannot add marks directly', () => as(CLIENT, `insert into approval_marks (approval_id, task_id, file_path, x, y, note)
+  select id, task_id, 'x', 0, 0, 'x' from approvals where task_id = $1`, [r1]));
+check('approving ignores marks', (await as(CLIENT, `select client_decide($1, true, null, $2::jsonb)`, [r2, JSON.stringify([{ file_path: 'junk', x: 0, y: 0, note: 'x' }])])) &&
+  (await as(CLIENT, 'select count(*)::int n from approval_marks where task_id=$1', [r2])).rows[0].n === 0);
+
+await db.exec(`update tasks set status = 'client_review' where id = '${r2}'`);
+await fails('outsider approves nothing', () => as(OTHER, 'select client_approve_many($1)', [[r2, r3]]));
+await db.exec('delete from notifications');
+check('approve all: only own tasks waiting for the client',
+  (await as(CLIENT, 'select client_approve_many($1) n', [[r1, r2, r3]])).rows[0].n === 2 &&
+  (await as(CLIENT, `select count(*)::int n from tasks where id = any($1) and status = 'approved'`, [[r2, r3]])).rows[0].n === 2);
+n = await notes();
+check('approve all notifies the team about each task',
+  [...new Set(n.filter(x => x.kind === 'client_approved').map(x => x.payload.task_id))].sort().join() === [r2, r3].sort().join());
+await fails('nothing left to approve', () => as(CLIENT, 'select client_approve_many($1)', [[r2, r3]]));
+
+check('settings readable by everyone', (await as(CLIENT, 'select auto_approve_days from agency_settings')).rows[0].auto_approve_days === 3);
+await as(CLIENT, 'update agency_settings set auto_approve_days = 30');
+await as(MANAGER, 'update agency_settings set auto_approve_days = 30');
+check('only the owner changes settings', (await as(null, 'select auto_approve_days from agency_settings')).rows[0].auto_approve_days === 3);
+
+// r1: отправлен 3 дня назад — одобряется сам; r2: вчера — напоминание; r3: только что — тишина.
+await db.exec(`
+  update tasks set status = 'client_review' where id in ('${r1}', '${r2}', '${r3}');
+  update tasks set client_review_since = now() - interval '3 days' where id = '${r1}';
+  update tasks set client_review_since = now() - interval '1 day' where id = '${r2}';
+  delete from notifications;
+`);
+await fails('client cannot run deadlines', () => as(CLIENT, 'select process_review_deadlines()'));
+check('overdue material approved automatically', (await as(null, 'select process_review_deadlines() n')).rows[0].n === 1);
+const autoA = (await as(CLIENT, 'select a.auto, t.status from approvals a join tasks t on t.id = a.task_id where a.task_id=$1 order by a.created_at desc limit 1', [r1])).rows[0];
+check('auto approval marked as automatic', autoA.auto === true && autoA.status === 'approved');
+n = await notes();
+check('team told it was approved automatically', n.some(x => x.kind === 'client_auto_approved' && x.payload.task_id === r1) && !n.some(x => x.kind === 'client_approved'));
+const rem = n.filter(x => x.kind === 'client_review_reminder');
+const waitingNow = (await as(CLIENT, `select count(*)::int n from tasks where status = 'client_review'`)).rows[0].n;
+check('one reminder to the client about everything waiting: ' + JSON.stringify(rem.map(x => x.payload)),
+  rem.length === 1 && rem[0].user_id === CLIENT && rem[0].payload.count === waitingNow && waitingNow >= 2 && /^\d\d\.\d\d$/.test(rem[0].payload.deadline));
+await db.exec('delete from notifications');
+await as(null, 'select process_review_deadlines()');
+check('no second reminder the same day', (await notes()).length === 0);
+
+await as(ADMIN, 'update agency_settings set auto_approve_days = 0');
+await db.exec(`update tasks set client_review_since = now() - interval '30 days' where id = '${r2}'`);
+check('auto approval off: nothing approved', (await as(null, 'select process_review_deadlines() n')).rows[0].n === 0 &&
+  (await as(null, 'select status from tasks where id=$1', [r2])).rows[0].status === 'client_review');
+await as(ADMIN, 'update agency_settings set auto_approve_days = 3');
+await db.exec(`update tasks set status = 'approved' where id = '${r2}'`);
+check('leaving review clears the clock', (await as(null, 'select client_review_since from tasks where id=$1', [r2])).rows[0].client_review_since === null);
+
+// ---- Промокоды и квитанции ----
+await fails('client cannot create promo codes', () => as(CLIENT, `insert into promo_codes (code, percent) values ('FREE', 50)`));
+await as(ADMIN, `insert into promo_codes (code, percent, max_uses) values ('AUTUMN10', 10, 1)`);
+await as(ADMIN, `insert into promo_codes (code, amount_amd, valid_until) values ('OLD', 1000, yerevan_today() - 1)`);
+await as(ADMIN, `insert into promo_codes (code, amount_amd) values ('BIG', 100000)`);
+await fails('code must be upper case letters and digits', () => as(ADMIN, `insert into promo_codes (code, percent) values ('a b', 5)`));
+await fails('percent or amount, not both', () => as(ADMIN, `insert into promo_codes (code, percent, amount_amd) values ('BOTH', 5, 5)`));
+check('client does not see the list of codes', (await as(CLIENT, 'select * from promo_codes')).rows.length === 0);
+check('client checks a code (any case, spaces)', (await as(CLIENT, `select check_promo(' autumn10 ') p`)).rows[0].p.percent === 10);
+await fails('expired code', () => as(CLIENT, `select check_promo('OLD')`));
+await fails('unknown code', () => as(CLIENT, `select check_promo('NOPE')`));
+const oneItem = '[{"service_id":"post","platform_id":"instagram","quantity":1}]';
+const promoOrder = (await as(CLIENT, `select create_order($1, $2::jsonb, 'monthly', 'team', 5000, null, 'autumn10') as id`, [bizId, oneItem])).rows[0].id;
+const po = (await as(CLIENT, 'select * from orders where id=$1', [promoOrder])).rows[0];
+check(`discount on services only: ${po.items_total_amd} - ${po.discount_amd} + ${po.ad_budget_amd} = ${po.total_amd}`,
+  po.discount_amd === 800 && po.total_amd === 8000 - 800 + 5000 && po.promo_code === 'AUTUMN10');
+check('code is counted only after payment', (await as(null, `select used_count from promo_codes where code='AUTUMN10'`)).rows[0].used_count === 0);
+const promoPay = await payOrder(promoOrder);
+check('code counted on payment', (await as(null, `select used_count from promo_codes where code='AUTUMN10'`)).rows[0].used_count === 1);
+await fails('used up code', () => as(CLIENT, `select create_order($1, $2::jsonb, 'one_time', 'team', 0, null, 'AUTUMN10')`, [bizId, oneItem]));
+await fails('discount cannot make the order free', () => as(CLIENT, `select create_order($1, $2::jsonb, 'one_time', 'team', 0, null, 'BIG')`, [bizId, oneItem]));
+const big = (await as(CLIENT, `select create_order($1, $2::jsonb, 'one_time', 'team', 3000, null, 'BIG') as id`, [bizId, oneItem])).rows[0].id;
+check('fixed discount capped by services total', (await as(CLIENT, 'select discount_amd, total_amd from orders where id=$1', [big])).rows[0].total_amd === 3000);
+const renewed = (await as(CLIENT, 'select repeat_order($1) as id', [promoOrder])).rows[0].id;
+const rn2 = (await as(CLIENT, 'select * from orders where id=$1', [renewed])).rows[0];
+check('repeat order goes at full price', rn2.discount_amd === 0 && rn2.promo_code === null && rn2.total_amd === 8000 + 5000);
+
+const receipts = (await as(CLIENT, `select id, receipt_no from payments where status = 'succeeded' order by receipt_no`)).rows;
+check('every paid payment has a unique receipt number, latest is the biggest',
+  receipts.length >= 3 && receipts.every(r => r.receipt_no !== null) && new Set(receipts.map(r => r.receipt_no)).size === receipts.length &&
+  receipts.at(-1).id === promoPay);
+check('unpaid payment has no receipt', (await as(null, `select count(*)::int n from payments where status <> 'succeeded' and receipt_no is not null`)).rows[0].n === 0);
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

@@ -3,14 +3,14 @@ import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
+import type { ChatListItem } from '@/lib/chat';
 import { playChatSound } from '@/lib/chatSound';
 import { supabase } from '@/lib/supabase';
-import type { Conversation } from '@/lib/teamChat';
 
 import { colors } from './theme';
 
-// Вход в чат команды на главной, с числом непрочитанных.
-export function TeamChatButton() {
+// Вход в «Чаты» на главной, с числом непрочитанных во всех чатах.
+export function ChatsButton() {
   const { t } = useI18n();
   const [unread, setUnread] = useState(0);
   // Сколько было при прошлой проверке; null — ещё не проверяли (без сигнала на старте).
@@ -19,9 +19,9 @@ export function TeamChatButton() {
   useFocusEffect(
     useCallback(() => {
       const load = () =>
-        supabase.rpc('my_conversations').then(({ data }) => {
+        supabase.rpc('my_chats').then(({ data }) => {
           if (!data) return;
-          const total = (data as Conversation[]).reduce((sum, c) => sum + c.unread, 0);
+          const total = (data as ChatListItem[]).reduce((sum, c) => sum + c.unread, 0);
           if (previous.current !== null && total > previous.current) playChatSound();
           previous.current = total;
           setUnread(total);
@@ -33,11 +33,8 @@ export function TeamChatButton() {
   );
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => router.push('/team-chat')}
-      style={styles.button}>
-      <Text style={styles.text}>{t('teamChat.title')}</Text>
+    <Pressable accessibilityRole="button" onPress={() => router.push('/chats')} style={styles.button}>
+      <Text style={styles.text}>💬 {t('chats.title')}</Text>
       {unread > 0 && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{unread}</Text>
@@ -65,7 +62,7 @@ const styles = StyleSheet.create({
     height: 24,
     paddingHorizontal: 7,
     borderRadius: 12,
-    backgroundColor: colors.primary,
+    backgroundColor: '#2F8CF0',
     alignItems: 'center',
     justifyContent: 'center',
   },

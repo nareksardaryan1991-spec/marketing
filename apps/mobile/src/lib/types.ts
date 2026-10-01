@@ -27,6 +27,9 @@ export type Profile = {
   cover_path: string | null;
   accent_color: string | null;
   bio: string | null;
+  // Чаты: когда был в сети и фон («preset:<id>» или «photo:<путь>»).
+  last_seen_at: string | null;
+  chat_wallpaper: string | null;
   created_at: string;
 };
 
@@ -94,6 +97,9 @@ export type Order = {
   total_amd: number;
   notes: string | null;
   paid_at: string | null;
+  // Промокод и скидка на услуги (рекламный бюджет не уменьшается).
+  promo_code: string | null;
+  discount_amd: number;
   created_at: string;
 };
 
@@ -134,6 +140,8 @@ export type Task = {
   published_url: string | null;
   publish_error: string | null;
   autopublish_state: { container?: string; children?: string[]; failed?: boolean };
+  // Когда материал отправлен клиенту на согласование (от этого считается автоодобрение).
+  client_review_since: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -189,4 +197,24 @@ export type PostMetrics = {
   media_type: string | null;
   metrics: Record<string, number>;
   fetched_at: string;
+};
+
+// Точка правки на материале: x, y — доля ширины и высоты кадра, at_seconds — секунда видео.
+export type ApprovalMark = {
+  file_path: string;
+  x: number;
+  y: number;
+  at_seconds: number | null;
+  note: string;
+};
+
+export type PromoCode = {
+  code: string;
+  percent: number | null;
+  amount_amd: number | null;
+  max_uses: number | null;
+  used_count: number;
+  valid_until: string | null;
+  active: boolean;
+  created_at: string;
 };

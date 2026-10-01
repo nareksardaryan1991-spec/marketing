@@ -2,8 +2,9 @@
 """Просмотровый сервер: собранное веб-приложение + поддельный Supabase с демо-данными.
 
 Нужен, чтобы посмотреть приложение без Docker и без облака. Работает только на этом
-компьютере (127.0.0.1). Сообщения в чатах и личный кабинет (имя, фото, обложка) сохраняются в памяти,
-пока сервер запущен; остальные действия (оплата, одобрение, назначение) не сохраняются.
+компьютере (127.0.0.1). Сообщения в чатах (с файлами, реакциями, правками) и личный кабинет сохраняются в памяти,
+пока сервер запущен; одобрение и правки клиента, промокоды и настройки — тоже.
+Остальные действия (оплата, назначение) не сохраняются.
 
 Запуск: ./scripts/preview.sh  (или python3 scripts/preview/mock_server.py <папка сборки> <порт>)
 Вход: client@demo.am / manager@demo.am / designer@demo.am / freelancer@demo.am, пароль demo1234.
@@ -12,9 +13,12 @@ import http.server
 import json
 import threading
 import os
+import re
 import sys
 import time
+import struct
 import urllib.parse
+import zlib
 from datetime import datetime, timedelta, timezone
 
 ROOT = sys.argv[1]
@@ -36,6 +40,10 @@ def now_iso():
     return iso(datetime.now(timezone.utc))
 
 
+# Демо-заказ оплачен в этом месяце (иначе в первые дни месяца выручка «пропадает» из панели).
+PAID_AT = max(day(-10), iso(NOW.replace(day=1, hour=0, minute=0, second=0, microsecond=0)))
+
+
 # ---------- Люди ----------
 CLIENT = 'c0000000-0000-4000-8000-000000000001'
 MANAGER = 'a0000000-0000-4000-8000-000000000002'
@@ -46,7 +54,7 @@ FREELANCER = 'f0000000-0000-4000-8000-000000000004'
 def person(pid, name, email, role):
     return {'id': pid, 'full_name': name, 'email': email, 'role': role, 'language': 'ru',
             'phone': None, 'avatar_path': None, 'cover_path': None, 'accent_color': None, 'bio': None,
-            'created_at': day(-40)}
+            'last_seen_at': None, 'chat_wallpaper': None, 'created_at': day(-40)}
 
 
 ADMIN = 'ad000000-0000-4000-8000-000000000005'
@@ -81,7 +89,8 @@ def is_manager(role):
 
 # Фото из личного кабинета (bucket avatars): путь -> (тип, байты). Живут, пока сервер запущен.
 PHOTOS = {}
-PROFILE_FIELDS = ('full_name', 'phone', 'language', 'avatar_path', 'cover_path', 'accent_color', 'bio')
+PROFILE_FIELDS = ('full_name', 'phone', 'language', 'avatar_path', 'cover_path', 'accent_color', 'bio',
+                  'chat_wallpaper')
 
 # Кто делает текущий запрос — определяется по токену входа (у каждого окна свой).
 REQUEST = threading.local()
@@ -142,7 +151,8 @@ PLATFORM_SERVICES = [
 ORDERS = [{
     'id': ORDER, 'business_id': BIZ, 'client_id': CLIENT, 'billing': 'monthly', 'publishing': 'team',
     'status': 'in_progress', 'items_total_amd': 63000, 'ad_budget_amd': 0, 'total_amd': 63000,
-    'notes': 'Осеннее меню, акцент на тыквенный латте', 'paid_at': day(-10), 'created_at': day(-10),
+    'notes': 'Осеннее меню, акцент на тыквенный латте', 'paid_at': PAID_AT, 'created_at': day(-10),
+    'promo_code': None, 'discount_amd': 0,
 }]
 def item(iid, order_id, sid, platform, qty, price):
     return {'id': iid, 'order_id': order_id, 'service_id': sid, 'platform_id': platform, 'quantity': qty,
@@ -157,12 +167,34 @@ ITEMS = [
 ]
 
 
+def demo_png(width, height, top, bottom):
+    """Однотонная картинка с плавным переходом цвета — вместо настоящих фото в просмотре."""
+    rows = b''.join(
+        b'\x00' + bytes(round(top[c] + (bottom[c] - top[c]) * y / height) for c in range(3)) * width
+        for y in range(height))
+    chunk = lambda kind, data: struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) +
+            chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+
+
+# Файлы материалов (bucket deliverables): путь -> PNG.
+DELIVERABLE_FILES = {}
+DEMO_COLORS = [((251, 191, 36), (194, 65, 12)), ((167, 139, 250), (67, 56, 202)),
+               ((110, 231, 183), (4, 120, 87)), ((253, 164, 175), (190, 18, 60))]
+
+
 def task(n, platform, svc, num, status, assignee=None, publish=None, due=None, brief=None, url=None, caption=None):
     tid = 't0000000-0000-4000-8000-%012d' % n
     deliverables = []
     if caption:
+        files = []
+        for i in range(2 if svc == 'post' else 1):
+            path = '%s/%d-demo-%d.png' % (tid, n, i + 1)
+            top, bottom = DEMO_COLORS[(n + i) % len(DEMO_COLORS)]
+            DELIVERABLE_FILES[path] = demo_png(80, 100 if svc == 'post' else 142, top, bottom)
+            files.append(path)
         deliverables.append({
-            'id': 'v%d' % n, 'task_id': tid, 'version': 1, 'caption': caption, 'files': [], 'note': None,
+            'id': 'v%d' % n, 'task_id': tid, 'version': 1, 'caption': caption, 'files': files, 'note': None,
             'created_by': DESIGNER, 'created_at': day(-1),
             'sent_to_client_at': day(-1) if status in ('client_review', 'approved', 'published') else None,
         })
@@ -172,6 +204,7 @@ def task(n, platform, svc, num, status, assignee=None, publish=None, due=None, b
         'assignee_id': assignee, 'due_date': due, 'brief': brief, 'publish_at': publish,
         'published_at': publish if status == 'published' else None, 'published_url': url,
         'publish_error': None, 'autopublish_state': {}, 'created_at': day(-10), 'updated_at': day(-1),
+        'client_review_since': day(-1) if status == 'client_review' else None,
         'services': SVC[svc], 'businesses': BUSINESS, 'orders': {'notes': ORDERS[0]['notes'], 'publishing': 'team'},
         'deliverables': deliverables,
     }
@@ -186,11 +219,24 @@ TASKS = [
                  'Всего 1 800 ֏.\nЖдём вас на Абовяна 12 🍪\n\n#CafeAroma #Ереван #кофе #осень'),
     task(3, 'instagram', 'post', 3, 'internal_review', DESIGNER, due=day(2)[:10], brief='Новый десерт: чизкейк с солёной карамелью',
          caption='Солёная карамель + нежный чизкейк = идеальная пара к вашему капучино 🍰'),
-    task(4, 'facebook', 'post', 1, 'in_progress', DESIGNER, due=day(4)[:10], brief='Утренний кофе с собой: скидка 10% до 10:00'),
-    task(5, 'tiktok', 'reel', 1, 'assigned', FREELANCER, due=day(5)[:10], brief='Процесс приготовления латте-арта, 15–20 секунд'),
+    task(4, 'facebook', 'post', 1, 'in_progress', DESIGNER, due=day(-2)[:10], brief='Утренний кофе с собой: скидка 10% до 10:00'),
+    task(5, 'tiktok', 'reel', 1, 'assigned', FREELANCER, due=day(1)[:10], brief='Процесс приготовления латте-арта, 15–20 секунд'),
     task(6, 'instagram', 'story', 1, 'approved', DESIGNER, day(1, 10), caption='Опрос: тыквенный латте или раф с карамелью? 🗳'),
     task(7, 'instagram', 'story', 2, 'new'),
+    task(8, 'instagram', 'reel', 1, 'client_review', DESIGNER, day(3, 18),
+         caption='30 секунд из жизни бариста: как рождается тыквенный латте 🎃'),
+    task(9, 'instagram', 'story', 3, 'client_review', DESIGNER, day(2, 9),
+         caption='Только сегодня: второй латте — за полцены ☕☕'),
 ]
+
+# Оплаты, квитанции, решения клиента, промокоды, настройки агентства.
+PAYMENTS = [{'id': 'p0000000-0000-4000-8000-000000000001', 'order_id': ORDER, 'provider': 'idram',
+             'amount_amd': 63000, 'status': 'succeeded', 'receipt_no': 1, 'updated_at': PAID_AT,
+             'created_at': day(-10)}]
+APPROVALS = []
+PROMO_CODES = [{'code': 'AUTUMN10', 'percent': 10, 'amount_amd': None, 'max_uses': 50, 'used_count': 3,
+                'valid_until': day(30)[:10], 'active': True, 'created_at': day(-5)}]
+AGENCY = {'id': True, 'auto_approve_days': 3, 'updated_at': day(-5)}
 
 MESSAGES = [
     {'id': 'm1', 'order_id': ORDER, 'author_id': CLIENT, 'author_name': 'Анна Петросян', 'from_client': True,
@@ -215,6 +261,248 @@ TEAM_MESSAGES = [
      'body': 'Хорошо, сделаю до вечера.', 'created_at': day(0, 8)},
 ]
 READ_AT = {}
+
+# ---------- Чаты как в Telegram ----------
+# Файлы чатов (bucket chat-files): путь -> (тип, байты). Реакции, закреп, удалённые оригиналы.
+CHAT_FILES = {}
+REACTIONS = []
+PINNED = {}
+DELETED = {}
+
+for _m in MESSAGES + TEAM_MESSAGES:
+    _m.update({k: _m.get(k) for k in ('reply_to_id', 'forwarded_from', 'edited_at', 'deleted_at', 'call')})
+    _m.setdefault('attachments', [])
+TEAM_MESSAGES[1]['reply_to_id'] = 'tm1'
+MESSAGES[1]['edited_at'] = day(-1, 12)
+REACTIONS += [
+    {'message_id': 'tm2', 'chat': 'team', 'chat_id': TEAM_ID, 'user_id': MANAGER, 'user_name': 'Нарек', 'emoji': '👍'},
+    {'message_id': 'm2', 'chat': 'order', 'chat_id': ORDER, 'user_id': CLIENT, 'user_name': 'Анна Петросян', 'emoji': '❤️'},
+]
+PINNED[TEAM_ID] = 'tm1'
+PROFILES['designer@demo.am']['last_seen_at'] = day(0, 7)
+
+
+OPEN_STATUSES = ('new', 'assigned', 'in_progress', 'internal_review', 'changes_requested')
+
+
+def owner_dashboard():
+    """Панель владельца (как owner_dashboard в миграции 0017, упрощённо)."""
+    today, month = day(0)[:10], day(0)[:7]
+    admin = me()['role'] == 'admin'
+    paid = [o for o in ORDERS if o['paid_at']]
+    counts = {}
+    for o in ORDERS:
+        counts[o['status']] = counts.get(o['status'], 0) + 1
+    def n(statuses):
+        return sum(1 for t in TASKS if t['status'] in statuses)
+    overdue = [t for t in TASKS if t['due_date'] and t['due_date'] < today and t['status'] in OPEN_STATUSES]
+    workload = []
+    for p in PROFILES.values():
+        if not is_employee(p['role']) or p['role'] == 'admin':
+            continue
+        mine = [t for t in TASKS if t['assignee_id'] == p['id'] and t['status'] in OPEN_STATUSES]
+        workload.append({'id': p['id'], 'name': p['full_name'], 'role': p['role'], 'avatar_path': p['avatar_path'],
+                         'accent_color': p['accent_color'], 'open': len(mine),
+                         'overdue': sum(1 for t in mine if t in overdue)})
+    workload.sort(key=lambda w: (-w['open'], w['name']))
+    return {
+        'is_admin': admin,
+        'revenue_month': sum(o['total_amd'] for o in paid if o['paid_at'][:7] == month) if admin else None,
+        'revenue_prev_month': 48000 if admin else None,
+        'paid_orders_month': sum(1 for o in paid if o['paid_at'][:7] == month),
+        'active_clients': len({o['client_id'] for o in ORDERS if o['status'] in ('paid', 'in_progress')}),
+        'orders': counts,
+        'tasks': {'unassigned': n(('new',)), 'in_work': n(('assigned', 'in_progress', 'changes_requested')),
+                  'review': n(('internal_review',)), 'client': n(('client_review',)),
+                  'publish': n(('approved', 'publishing')), 'overdue': len(overdue)},
+        'workload': workload,
+    }
+
+
+def chat_messages(chat):
+    return MESSAGES if chat == 'order' else TEAM_MESSAGES
+
+
+def chat_column(chat):
+    return 'order_id' if chat == 'order' else 'conversation_id'
+
+
+def can_access_chat(chat, cid):
+    if chat == 'order':
+        return me()['role'] != 'freelancer' and cid in my_order_ids()
+    return can_access(cid)
+
+
+def find_message(chat, mid):
+    return next((m for m in chat_messages(chat) if m['id'] == mid), None)
+
+
+def others_read_at(chat, cid):
+    uid = me()['id']
+    reads = {u: t for (u, c), t in READ_AT.items() if c == cid and u != uid}
+    if chat == 'order':
+        order = next((o for o in ORDERS if o['id'] == cid), None)
+        client = order and order['client_id']
+        reads = {u: t for u, t in reads.items() if (u != client) == (uid == client)}
+    return max(reads.values(), default=None)
+
+
+def attachment_kind(m):
+    if m.get('call'):
+        return 'call'
+    return m['attachments'][0]['kind'] if m.get('attachments') else None
+
+
+def my_chats():
+    profile, uid, out = me(), me()['id'], []
+    for order in ORDERS:
+        if not can_access_chat('order', order['id']):
+            continue
+        msgs = [m for m in MESSAGES if m['order_id'] == order['id']]
+        if not msgs and order['client_id'] != uid:
+            continue
+        last = msgs[-1] if msgs else None
+        client = by_id(order['client_id'])
+        biz = next((b for b in BUSINESSES if b['id'] == order['business_id']), {})
+        read_at = READ_AT.get((uid, order['id']), '')
+        mine = order['client_id'] == uid
+        out.append({
+            'chat': 'order', 'id': order['id'], 'kind': 'order', 'title': biz.get('name'),
+            'business_name': biz.get('name'), 'order_created_at': order['created_at'],
+            'peer_id': None if mine else client['id'], 'peer_role': None,
+            'avatar_path': None if mine else client['avatar_path'],
+            'last_seen_at': None if mine else client['last_seen_at'],
+            'last_message_at': last and last['created_at'], 'last_body': last and last['body'],
+            'last_author': last and last['author_name'], 'last_author_id': last and last['author_id'],
+            'last_attachment': last and attachment_kind(last), 'last_deleted': bool(last and last['deleted_at']),
+            'unread': sum(1 for m in msgs if m['author_id'] != uid and not m['deleted_at'] and m['created_at'] > read_at),
+            'others_read_at': others_read_at('order', order['id']),
+        })
+    for conv in my_conversations():
+        msgs = [m for m in TEAM_MESSAGES if m['conversation_id'] == conv['id']]
+        last = msgs[-1] if msgs else None
+        other = by_id(conv['other_user_id']) if conv['other_user_id'] else None
+        read_at = READ_AT.get((uid, conv['id']), '')
+        out.append({
+            'chat': 'team', 'id': conv['id'], 'kind': conv['kind'], 'title': conv['other_name'],
+            'business_name': None, 'order_created_at': None, 'peer_id': conv['other_user_id'],
+            'peer_role': conv['other_role'], 'avatar_path': other and other['avatar_path'],
+            'last_seen_at': other and other['last_seen_at'],
+            'last_message_at': last and last['created_at'], 'last_body': last and last['body'],
+            'last_author': last and last['author_name'], 'last_author_id': last and last['author_id'],
+            'last_attachment': last and attachment_kind(last), 'last_deleted': bool(last and last['deleted_at']),
+            'unread': sum(1 for m in msgs if m['author_id'] != uid and not m['deleted_at'] and m['created_at'] > read_at),
+            'others_read_at': others_read_at('team', conv['id']),
+        })
+    out.sort(key=lambda c: c['last_message_at'] or '', reverse=True)
+    return out
+
+
+def chat_info(chat, cid):
+    uid = me()['id']
+    pinned = find_message(chat, PINNED.get(cid))
+    pinned = pinned and not pinned['deleted_at'] and {k: pinned[k] for k in ('id', 'body', 'attachments', 'author_name')}
+    peer, members, title = None, None, None
+    if chat == 'order':
+        order = next(o for o in ORDERS if o['id'] == cid)
+        title = next((b['name'] for b in BUSINESSES if b['id'] == order['business_id']), None)
+        if order['client_id'] == uid:
+            seen = [p['last_seen_at'] for p in PROFILES.values() if is_team(p['role']) and p['last_seen_at']]
+            peer = {'last_seen_at': max(seen, default=None)}
+        else:
+            c = by_id(order['client_id'])
+            peer = {'id': c['id'], 'name': c['full_name'], 'avatar_path': c['avatar_path'], 'last_seen_at': c['last_seen_at']}
+    elif CONVERSATIONS[cid]['kind'] == 'direct':
+        o = by_id(next(m for m in CONVERSATIONS[cid]['members'] if m != uid))
+        peer = {'id': o['id'], 'name': o['full_name'], 'avatar_path': o['avatar_path'], 'role': o['role'],
+                'last_seen_at': o['last_seen_at']}
+        title = o['full_name']
+    else:
+        members = sum(1 for p in PROFILES.values() if is_team(p['role']))
+    return {'title': title, 'pinned': pinned or None, 'peer': peer, 'members': members,
+            'others_read_at': others_read_at(chat, cid)}
+
+
+def chat_rpc(fn, data):
+    """Функции чатов (как в миграции 0015, упрощённо). Возвращает (ответ, ошибка)."""
+    profile, uid = me(), me()['id']
+    chat = data.get('p_chat') or data.get('p_from_chat')
+    if fn == 'my_chats':
+        return my_chats(), None
+    if fn == 'touch_last_seen':
+        if profile is not PENDING_ANON:
+            profile['last_seen_at'] = now_iso()
+        return None, None
+    if fn == 'chat_info':
+        if not can_access_chat(chat, data.get('p_chat_id')):
+            return None, 'chat not found'
+        return chat_info(chat, data.get('p_chat_id')), None
+    if fn == 'mark_chat_read':
+        if not can_access_chat(chat, data.get('p_chat_id')):
+            return None, 'chat not found'
+        READ_AT[(uid, data.get('p_chat_id'))] = now_iso()
+        return None, None
+    if fn == 'pin_chat_message':
+        cid, mid = data.get('p_chat_id'), data.get('p_message_id')
+        if not can_access_chat(chat, cid):
+            return None, 'chat not found'
+        if mid is None:
+            PINNED.pop(cid, None)
+        else:
+            PINNED[cid] = mid
+        return None, None
+    message = find_message(chat, data.get('p_message_id')) if chat in ('order', 'team') else None
+    if not message or message['deleted_at'] or not can_access_chat(chat, message[chat_column(chat)]):
+        return None, 'message not found'
+    cid = message[chat_column(chat)]
+    if fn == 'edit_chat_message':
+        body = (data.get('p_body') or '').strip()
+        if message['author_id'] != uid or not (body or message['attachments']):
+            return None, 'message not found'
+        if body != message['body']:
+            message.update(body=body, edited_at=now_iso())
+        return None, None
+    if fn == 'delete_chat_message':
+        if message['author_id'] != uid and profile['role'] != 'admin':
+            return None, 'only the author can delete a message'
+        DELETED[message['id']] = {'message_id': message['id'], 'chat': chat, 'chat_id': cid,
+                                  'body': message['body'], 'attachments': message['attachments']}
+        message.update(body='', attachments=[], forwarded_from=None, edited_at=None, deleted_at=now_iso(), call=None)
+        REACTIONS[:] = [r for r in REACTIONS if r['message_id'] != message['id']]
+        if PINNED.get(cid) == message['id']:
+            PINNED.pop(cid)
+        return None, None
+    if fn == 'react_to_message':
+        emoji = data.get('p_emoji')
+        existing = next((r for r in REACTIONS if r['message_id'] == message['id'] and r['user_id'] == uid), None)
+        REACTIONS[:] = [r for r in REACTIONS if not (r['message_id'] == message['id'] and r['user_id'] == uid)]
+        if emoji and (not existing or existing['emoji'] != emoji):
+            REACTIONS.append({'message_id': message['id'], 'chat': chat, 'chat_id': cid, 'user_id': uid,
+                              'user_name': profile['full_name'], 'emoji': emoji})
+        return None, None
+    if fn == 'forward_chat_message':
+        target, tid = data.get('p_to_chat'), data.get('p_to_chat_id')
+        if not can_access_chat(target, tid):
+            return None, 'chat not found'
+        copy = new_message(target, tid, message['body'], message['attachments'], None, None)
+        copy['forwarded_from'] = message['forwarded_from'] or message['author_name']
+        return copy['id'], None
+    return None, None
+
+
+def new_message(chat, cid, body, attachments, reply_to, call):
+    profile = me()
+    message = {'id': 'new-%d' % int(time.time() * 1000000), 'author_id': profile['id'],
+               'author_name': profile['full_name'], 'body': (body or '').strip(), 'created_at': now_iso(),
+               'attachments': attachments or [], 'reply_to_id': reply_to, 'forwarded_from': None,
+               'edited_at': None, 'deleted_at': None, chat_column(chat): cid,
+               'call': call and {'room': call['room'], 'video': bool(call.get('video'))}}
+    if message['reply_to_id'] and not any(m['id'] == reply_to and m[chat_column(chat)] == cid for m in chat_messages(chat)):
+        message['reply_to_id'] = None
+    if chat == 'order':
+        message['from_client'] = profile['role'] == 'client'
+    chat_messages(chat).append(message)
+    return message
 
 
 def can_access(cid):
@@ -344,7 +632,8 @@ def rows(table, q):
         return PLATFORM_SERVICES
     if table == 'orders':
         ids = my_order_ids()
-        result = [o for o in ORDERS if o['id'] in ids]
+        result = [{**o, 'businesses': {'name': next((b['name'] for b in BUSINESSES if b['id'] == o['business_id']), '')}}
+                  for o in ORDERS if o['id'] in ids]
         if eq(q, 'id'):
             result = [o for o in result if o['id'] == eq(q, 'id')]
         return sorted(result, key=lambda o: o['created_at'], reverse=True)
@@ -354,16 +643,45 @@ def rows(table, q):
         return [i for i in ITEMS if i['order_id'] in ids and (not oid or i['order_id'] == oid)]
     if table == 'tasks':
         result = visible_tasks()
-        for key_ in ('id', 'assignee_id', 'order_id'):
+        for key_ in ('id', 'assignee_id', 'order_id', 'business_id'):
             if eq(q, key_):
                 result = [t for t in result if t[key_] == eq(q, key_)]
-        status = q.get('status', [None])[0]
-        if status:
+        for status in q.get('status', []):
+            if status.startswith('neq.'):
+                result = [t for t in result if t['status'] != status[4:]]
+                continue
             allowed = status[4:-1].split(',') if status.startswith('in.(') else [status[3:]]
             result = [t for t in result if t['status'] in allowed]
+        due = q.get('due_date', [''])[0]
+        if due.startswith('lt.'):
+            result = [t for t in result if t['due_date'] and t['due_date'] < due[3:]]
         if 'publish_at' in q:
             result = [t for t in result if t['publish_at']]
+        mode, services = in_filter(q, 'service_id')
+        if mode == 'in':
+            result = [t for t in result if t['service_id'] in services]
+        if 'platform_id.eq.instagram' in q.get('or', [''])[0]:
+            result = [t for t in result if t['platform_id'] in (None, 'instagram')]
+        if q.get('order', [''])[0].startswith('client_review_since'):
+            result = sorted(result, key=lambda t: t.get('client_review_since') or '')
         return result
+    if table == 'approvals':
+        tid = eq(q, 'task_id')
+        visible = {t['id'] for t in visible_tasks()}
+        return sorted([a for a in APPROVALS if a['task_id'] in visible and (not tid or a['task_id'] == tid)],
+                      key=lambda a: a['created_at'], reverse=True)
+    if table == 'agency_settings':
+        return [AGENCY] if role != 'pending' else []
+    if table == 'promo_codes':
+        return PROMO_CODES if role == 'admin' else []
+    if table == 'payments':
+        ids = my_order_ids()
+        result = [p for p in PAYMENTS if p['order_id'] in ids]
+        for key_ in ('id', 'order_id', 'status'):
+            if eq(q, key_):
+                result = [p for p in result if p[key_] == eq(q, key_)]
+        return sorted(result, key=lambda p: p['receipt_no'] or 0,
+                      reverse=q.get('order', [''])[0] == 'receipt_no.desc')
     if table == 'deliverables':
         tid = eq(q, 'task_id')
         return [d for t in visible_tasks() for d in t['deliverables'] if not tid or d['task_id'] == tid]
@@ -374,6 +692,12 @@ def rows(table, q):
     if table == 'team_messages':
         cid = eq(q, 'conversation_id')
         return [m for m in TEAM_MESSAGES if can_access(m['conversation_id']) and (not cid or m['conversation_id'] == cid)]
+    if table == 'chat_reactions':
+        cid = eq(q, 'chat_id')
+        return [r for r in REACTIONS if r['chat_id'] == cid and can_access_chat(r['chat'], cid)]
+    if table == 'deleted_chat_messages':
+        cid = eq(q, 'chat_id')
+        return [d for d in DELETED.values() if d['chat_id'] == cid] if role == 'admin' else []
     if table == 'task_comments':
         if not is_employee(role):
             return []
@@ -421,15 +745,61 @@ def create_order(data):
         total += qty * price
     if not lines:
         return None, 'order is empty'
-    ITEMS.extend(lines)
     budget = int(data.get('p_ad_budget_amd') or 0)
+    promo, discount = None, 0
+    if (data.get('p_promo_code') or '').strip():
+        promo, error = valid_promo(data['p_promo_code'])
+        if error:
+            return None, error
+        discount = min(total, promo['amount_amd'] or round(total * promo['percent'] / 100))
+    if total - discount + budget <= 0:
+        return None, 'order total must be positive'
+    ITEMS.extend(lines)
     ORDERS.append({
         'id': order_id, 'business_id': business['id'], 'client_id': profile['id'], 'billing': data.get('p_billing'),
         'publishing': data.get('p_publishing'), 'status': 'pending_payment', 'items_total_amd': total,
-        'ad_budget_amd': budget, 'total_amd': total + budget, 'notes': (data.get('p_notes') or '').strip() or None,
-        'paid_at': None, 'created_at': now_iso(),
+        'ad_budget_amd': budget, 'total_amd': total - discount + budget,
+        'notes': (data.get('p_notes') or '').strip() or None, 'paid_at': None, 'created_at': now_iso(),
+        'promo_code': promo['code'] if promo else None, 'discount_amd': discount,
     })
     return order_id, None
+
+
+def valid_promo(code):
+    promo = next((p for p in PROMO_CODES if p['code'] == (code or '').strip().upper() and p['active']), None)
+    if not promo:
+        return None, 'promo code not found'
+    if promo['valid_until'] and promo['valid_until'] < NOW.date().isoformat():
+        return None, 'promo code expired'
+    if promo['max_uses'] and promo['used_count'] >= promo['max_uses']:
+        return None, 'promo code used up'
+    return promo, None
+
+
+def client_decide(task_ids, approve, comment, marks):
+    """Решение клиента по задачам на согласовании (как client_decide / client_approve_many)."""
+    profile = me()
+    mine = {o['id'] for o in ORDERS if o['client_id'] == profile['id']}
+    done = 0
+    for t in TASKS:
+        if t['id'] not in task_ids or t['order_id'] not in mine or t['status'] != 'client_review':
+            continue
+        latest = max(t['deliverables'], key=lambda d: d['version'], default=None)
+        files = latest['files'] if latest else []
+        if not approve and any(m.get('file_path') not in files or not (m.get('note') or '').strip() for m in marks):
+            return 0, 'invalid marks'
+        APPROVALS.append({
+            'id': 'ap%d' % (len(APPROVALS) + 1), 'task_id': t['id'], 'deliverable_id': latest['id'] if latest else None,
+            'decision': 'approved' if approve else 'changes_requested',
+            'comment': None if approve else ((comment or '').strip() or None), 'auto': False, 'created_at': now_iso(),
+            'approval_marks': [] if approve else [
+                {'position': i + 1, 'file_path': m['file_path'], 'x': m['x'], 'y': m['y'],
+                 'at_seconds': m.get('at_seconds'), 'note': m['note'].strip()} for i, m in enumerate(marks)],
+        })
+        t['status'] = 'approved' if approve else 'changes_requested'
+        t['client_review_since'] = None
+        done += 1
+    return done, None if done else 'nothing to approve'
 
 
 def session_for(profile):
@@ -460,7 +830,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
     def reply(self, data, status=200, headers=None):
-        body = json.dumps(data).encode()
+        body = b'' if self.command == 'HEAD' else json.dumps(data).encode()
         self.send_response(status)
         self.cors()
         self.send_header('Content-Type', 'application/json')
@@ -548,6 +918,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             removed = [n for n in self.body().get('prefixes', []) if n.split('/')[0] == me()['id'] and PHOTOS.pop(n, None)]
             return self.reply([{'name': n} for n in removed])
 
+        # Файлы чатов: загрузка в свою папку доступного чата, ссылки на скачивание.
+        if path.startswith('/storage/v1/object/chat-files/') and self.command == 'POST':
+            name = urllib.parse.unquote(path[len('/storage/v1/object/chat-files/'):])
+            parts = name.split('/')
+            if len(parts) != 4 or parts[2] != me()['id'] or not can_access_chat(parts[0], parts[1]):
+                return self.reply({'statusCode': '403', 'error': 'Unauthorized',
+                                   'message': 'new row violates row-level security policy'}, 403)
+            length = int(self.headers.get('Content-Length') or 0)
+            CHAT_FILES[name] = (self.headers.get('Content-Type') or 'application/octet-stream', self.rfile.read(length))
+            return self.reply({'Key': 'chat-files/' + name, 'Id': name})
+        if path == '/storage/v1/object/sign/chat-files' and self.command == 'POST':
+            paths = self.body().get('paths') or []
+            return self.reply([{'path': p, 'error': None if p in CHAT_FILES else 'not found',
+                                'signedURL': '/object/sign/chat-files/%s?token=demo' % urllib.parse.quote(p)
+                                if p in CHAT_FILES else None} for p in paths])
+        if path.startswith('/storage/v1/object/sign/chat-files/'):
+            found = CHAT_FILES.get(urllib.parse.unquote(path[len('/storage/v1/object/sign/chat-files/'):]))
+            if not found:
+                return self.reply({'error': 'not found'}, 404)
+            self.send_response(200)
+            self.cors()
+            self.send_header('Content-Type', found[0])
+            self.send_header('Content-Length', str(len(found[1])))
+            self.end_headers()
+            self.wfile.write(found[1])
+            return None
+
         if path.startswith('/rest/v1/rpc/'):
             fn, data = path.rsplit('/', 1)[1], self.body()
             if fn == 'set_user_role':
@@ -561,6 +958,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if fn == 'create_order':
                 order_id, error = create_order(data)
                 return self.reply(order_id) if order_id else self.reply({'message': error}, 400)
+            if fn == 'check_promo':
+                promo, error = valid_promo(data.get('p_code'))
+                return self.reply({'message': error}, 400) if error else self.reply(
+                    {k: promo[k] for k in ('code', 'percent', 'amount_amd')})
+            if fn in ('client_decide', 'client_approve_many'):
+                single = fn == 'client_decide'
+                approve = data.get('p_approve') if single else True
+                marks = data.get('p_marks') or []
+                if single and not approve and not (data.get('p_comment') or '').strip() and not marks:
+                    return self.reply({'message': 'describe what to change'}, 400)
+                done, error = client_decide([data.get('p_task_id')] if single else data.get('p_task_ids') or [],
+                                            approve, data.get('p_comment'), marks)
+                if single and error == 'nothing to approve':
+                    error = 'task is not waiting for your decision'
+                return self.reply({'message': error}, 400) if error else self.reply(None if single else done)
+            if fn in ('my_chats', 'touch_last_seen', 'chat_info', 'mark_chat_read', 'pin_chat_message',
+                      'edit_chat_message', 'delete_chat_message', 'react_to_message', 'forward_chat_message'):
+                result, error = chat_rpc(fn, data)
+                return self.reply({'message': error}, 400) if error else self.reply(result)
+            if fn == 'owner_dashboard':
+                return self.reply(owner_dashboard()) if is_manager(me()['role']) else \
+                    self.reply({'message': 'only managers can see the dashboard'}, 400)
             if fn == 'my_conversations':
                 return self.reply(my_conversations())
             if fn == 'mark_conversation_read':
@@ -575,6 +994,46 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self.reply(cid)
             return self.reply(None)
 
+        if path in ('/rest/v1/agency_settings', '/rest/v1/promo_codes') and self.command in ('PATCH', 'POST'):
+            data = self.body()
+            if me()['role'] != 'admin':
+                return self.reply([])
+            if path.endswith('agency_settings'):
+                AGENCY.update({k: v for k, v in data.items() if k == 'auto_approve_days'})
+                return self.reply([AGENCY])
+            if self.command == 'PATCH':
+                promo = next((p for p in PROMO_CODES if p['code'] == eq(q, 'code')), None)
+                if promo:
+                    promo.update({k: v for k, v in data.items() if k == 'active'})
+                return self.reply([promo] if promo else [])
+            code = (data.get('code') or '').upper()
+            if not re.fullmatch(r'[A-Z0-9_-]{3,32}', code) or any(p['code'] == code for p in PROMO_CODES):
+                return self.reply({'message': 'duplicate key value violates unique constraint "promo_codes_pkey"'}, 409)
+            promo = {'code': code, 'percent': data.get('percent'), 'amount_amd': data.get('amount_amd'),
+                     'max_uses': data.get('max_uses'), 'used_count': 0, 'valid_until': data.get('valid_until'),
+                     'active': True, 'created_at': now_iso()}
+            PROMO_CODES.insert(0, promo)
+            return self.reply([promo], 201)
+
+        # Материалы задач: подписанные ссылки и сами картинки.
+        if path == '/storage/v1/object/sign/deliverables' and self.command == 'POST':
+            visible = {t['id'] for t in visible_tasks()}
+            paths = [p for p in self.body().get('paths') or [] if p.split('/')[0] in visible]
+            return self.reply([{'path': p, 'error': None if p in DELIVERABLE_FILES else 'not found',
+                                'signedURL': '/object/sign/deliverables/%s?token=demo' % urllib.parse.quote(p)
+                                if p in DELIVERABLE_FILES else None} for p in paths])
+        if path.startswith('/storage/v1/object/sign/deliverables/'):
+            png = DELIVERABLE_FILES.get(urllib.parse.unquote(path[len('/storage/v1/object/sign/deliverables/'):]))
+            if not png:
+                return self.reply({'error': 'not found'}, 404)
+            self.send_response(200)
+            self.cors()
+            self.send_header('Content-Type', 'image/png')
+            self.send_header('Content-Length', str(len(png)))
+            self.end_headers()
+            self.wfile.write(png)
+            return None
+
         if self.command == 'POST' and path == '/rest/v1/businesses':
             data, profile = self.body(), me()
             if profile['role'] != 'client':
@@ -585,22 +1044,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.reply(business if self.wants_object() else [business], 201)
 
         if self.command == 'POST' and path in ('/rest/v1/team_messages', '/rest/v1/messages'):
-            data, profile = self.body(), me()
-            message = {'id': 'new-%d' % int(time.time() * 1000), 'author_id': profile['id'],
-                       'author_name': profile['full_name'], 'body': (data.get('body') or '').strip(),
-                       'created_at': now_iso()}
-            if path.endswith('team_messages'):
-                if not can_access(data.get('conversation_id')):
-                    return self.reply({'message': 'new row violates row-level security policy'}, 403)
-                message['conversation_id'] = data.get('conversation_id')
-                TEAM_MESSAGES.append(message)
-            else:
-                message.update(order_id=data.get('order_id'), from_client=profile['role'] == 'client')
-                MESSAGES.append(message)
+            data = self.body()
+            chat = 'team' if path.endswith('team_messages') else 'order'
+            cid = data.get(chat_column(chat))
+            attachments = data.get('attachments') or []
+            call = data.get('call')
+            if call and not re.fullmatch(r'marketing-[a-z0-9]{20}', str(call.get('room'))):
+                return self.reply({'message': 'invalid call'}, 400)
+            if not can_access_chat(chat, cid) or not ((data.get('body') or '').strip() or attachments or call):
+                return self.reply({'message': 'new row violates row-level security policy'}, 403)
+            if any(a.get('path') not in CHAT_FILES for a in attachments):
+                return self.reply({'message': 'attachment not found'}, 400)
+            message = new_message(chat, cid, data.get('body'), attachments, data.get('reply_to_id'), call)
             return self.reply(message if self.wants_object() else [message], 201)
 
         if path.startswith('/rest/v1/'):
             data = rows(path.split('/')[3], q)
+            if q.get('order', [''])[0].startswith('created_at.desc'):
+                data = sorted(data, key=lambda r: r.get('created_at') or '', reverse=True)
             if 'limit' in q:
                 data = data[:int(q['limit'][0])]
             if self.wants_object():
@@ -624,6 +1085,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_DELETE(self):
         self.api()
+
+    def do_HEAD(self):
+        if urllib.parse.urlparse(self.path).path.startswith('/rest/'):
+            return self.api()
+        return super().do_HEAD()
 
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path

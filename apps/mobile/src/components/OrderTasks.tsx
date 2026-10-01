@@ -8,7 +8,7 @@ import { taskTitle } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
 import type { Deliverable, Localized, PublishingMode, Task } from '@/lib/types';
 
-import { ClientDecision } from './ClientDecision';
+import { ReviewInbox } from './ReviewInbox';
 import { FileList } from './task/FileList';
 import { PublishPanel } from './task/PublishPanel';
 import { TaskStatusBadge } from './TaskStatusBadge';
@@ -55,25 +55,7 @@ export function OrderTasks({
 
   return (
     <>
-      {isClient &&
-        waiting.map((task) => {
-          const latest = latestOf(task);
-          return (
-            <Card key={task.id}>
-              <View style={styles.row}>
-                <Text style={styles.name}>{title(task)}</Text>
-                <TaskStatusBadge status={task.status} />
-              </View>
-              {latest?.caption ? (
-                <Text selectable style={styles.caption}>
-                  {latest.caption}
-                </Text>
-              ) : null}
-              {latest && <FileList paths={latest.files} />}
-              <ClientDecision taskId={task.id} onDone={load} />
-            </Card>
-          );
-        })}
+      {isClient && waiting.length > 0 && <ReviewInbox />}
 
       {toPublish.map((task) => {
         const latest = latestOf(task);

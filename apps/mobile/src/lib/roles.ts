@@ -12,6 +12,11 @@ export function isTeamRole(role: UserRole | undefined): boolean {
   return !!role && !['client', 'pending', 'freelancer'].includes(role);
 }
 
+// Сотрудник агентства (с фрилансерами и владельцем), а не клиент и не ожидающий роли.
+export function isEmployeeRole(role: UserRole | undefined): boolean {
+  return !!role && !['client', 'pending'].includes(role);
+}
+
 // Роли, которые владелец может назначить (сам владелец назначается только в базе).
 export const ASSIGNABLE_ROLES: UserRole[] = [
   'manager',

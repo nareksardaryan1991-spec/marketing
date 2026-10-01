@@ -4,10 +4,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { OrdersList } from '@/components/OrdersList';
+import { ChatsButton } from '@/components/ChatsButton';
 import { ProfileHeader } from '@/components/ProfileHeader';
 import { ReviewInbox } from '@/components/ReviewInbox';
 import { TasksList } from '@/components/TasksList';
-import { TeamChatButton } from '@/components/TeamChatButton';
 import { Screen } from '@/components/Screen';
 import { colors } from '@/components/theme';
 import { Button, Card, ErrorText } from '@/components/ui';
@@ -31,7 +31,17 @@ export default function HomeScreen() {
         </ProfileHeader>
       </Pressable>
 
-      {profile.role !== 'client' && <TeamChatButton />}
+      {profile.role !== 'pending' && <ChatsButton />}
+      {isManagerRole(profile.role) && (
+        <Button title={`📊 ${t('dashboard.title')}`} onPress={() => router.push('/dashboard')} />
+      )}
+      {profile.role !== 'client' && (
+        <Button
+          title={`🗂 ${t('board.title')}`}
+          variant="ghost"
+          onPress={() => router.push('/board')}
+        />
+      )}
       {profile.role === 'client' && business && <ClientHome business={business} />}
       {isManagerRole(profile.role) && (
         <>
@@ -86,11 +96,6 @@ export default function HomeScreen() {
           title={t('calendar.title')}
           variant="ghost"
           onPress={() => router.push('/calendar')}
-        />
-        <Button
-          title={t('notify.title')}
-          variant="ghost"
-          onPress={() => router.push('/notifications')}
         />
         <Text style={styles.muted}>{t('common.language')}</Text>
         <LanguageSwitcher />

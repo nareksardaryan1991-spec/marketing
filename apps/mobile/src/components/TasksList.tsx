@@ -3,11 +3,12 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
-import { formatDate } from '@/lib/format';
+import { OPEN_STATUSES, todayIso } from '@/lib/due';
 import { taskTitle } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
 import type { Localized, Task, TaskStatus } from '@/lib/types';
 
+import { DueBadge } from './DueBadge';
 import { TaskStatusBadge } from './TaskStatusBadge';
 import { colors } from './theme';
 import { Card, ErrorText } from './ui';
@@ -22,11 +23,14 @@ export function TasksList({
   assigneeId,
   statuses,
   emptyText,
+  overdueOnly,
 }: {
   title: string;
   assigneeId?: string;
   statuses?: TaskStatus[];
   emptyText: string;
+  // Только просроченные: срок прошёл, а работа ещё за командой.
+  overdueOnly?: boolean;
 }) {
   const { language } = useI18n();
   const [tasks, setTasks] = useState<Row[]>([]);
@@ -43,11 +47,12 @@ export function TasksList({
         .limit(100);
       if (assigneeId) query = query.eq('assignee_id', assigneeId);
       if (statusKey) query = query.in('status', statusKey.split(','));
+      if (overdueOnly) query = query.lt('due_date', todayIso()).in('status', OPEN_STATUSES);
       query.then(({ data, error }) => {
         setError(error?.message ?? null);
         setTasks((data as Row[] | null) ?? []);
       });
-    }, [assigneeId, statusKey]),
+    }, [assigneeId, statusKey, overdueOnly]),
   );
 
   return (
@@ -64,11 +69,8 @@ export function TasksList({
               <Text style={styles.name}>
                 {taskTitle(task, task.services?.name, language)}
               </Text>
-              <Text style={styles.muted}>
-                {[task.businesses?.name, task.due_date && formatDate(task.due_date, language)]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </Text>
+              {!!task.businesses?.name && <Text style={styles.muted}>{task.businesses.name}</Text>}
+              <DueBadge due={task.due_date} status={task.status} />
             </View>
             <TaskStatusBadge status={task.status} />
           </Pressable>

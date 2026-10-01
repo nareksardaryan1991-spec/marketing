@@ -6,7 +6,8 @@ import { supabase } from './supabase';
 
 const BUCKET = 'avatars';
 
-export type ProfilePhoto = 'avatar' | 'cover';
+// wallpaper — своё фото фона чатов.
+export type ProfilePhoto = 'avatar' | 'cover' | 'wallpaper';
 
 // Цвета обложки на выбор в личном кабинете.
 export const ACCENT_COLORS = [
@@ -26,7 +27,7 @@ export function photoUrl(path: string | null | undefined): string | null {
   return path ? supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl : null;
 }
 
-// Фото профиля — квадрат 512 px, обложка — не шире 1200 px, обе в JPEG.
+// Фото профиля — квадрат 512 px, обложка и фон чатов — не шире 1200 px, все в JPEG.
 // Если фото не удалось прочитать (например, HEIC в браузере), загружаем как есть.
 async function prepare(asset: DocumentPicker.DocumentPickerAsset, kind: ProfilePhoto) {
   try {
