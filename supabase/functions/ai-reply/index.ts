@@ -1,4 +1,5 @@
 // AI-подсказка ответа клиенту в чате заказа (только для команды). Тело: { order_id }
+import { businessProfile } from '../_shared/business.ts';
 import { askClaude } from '../_shared/claude.ts';
 import { corsHeaders, json } from '../_shared/http.ts';
 import { adminClient, userClient } from '../_shared/supabase.ts';
@@ -37,7 +38,7 @@ Deno.serve(async (req) => {
   if (!isTeam) return json({ error: 'forbidden' }, 403);
 
   const [orderRes, messagesRes, tasksRes] = await Promise.all([
-    db.from('orders').select('status, notes, businesses(name, industry, tone)').eq('id', order_id).single(),
+    db.from('orders').select('status, notes, businesses(*)').eq('id', order_id).single(),
     db
       .from('messages')
       .select('from_client, author_name, body, attachments, created_at')
@@ -72,7 +73,7 @@ Deno.serve(async (req) => {
     .join('\n');
 
   const prompt = [
-    `## Client business\n${business?.name ?? ''}, ${business?.industry ?? ''}. Tone: ${business?.tone ?? 'not specified'}`,
+    businessProfile(business),
     `## Order status: ${orderRes.data.status}`,
     orderRes.data.notes ? `## Client notes\n${orderRes.data.notes}` : '',
     tasks ? `## Tasks\n${tasks}` : '',

@@ -411,6 +411,28 @@ await waitText(clientView, 'Мои заказы');
 check('client does not see the employee assistant', !(await text(clientView)).includes('Мой день'));
 check('client does not see AI agents', !(await text(clientView)).includes('AI-агенты'));
 
+// Профиль бизнеса («мозг» агентов): одна карточка на главной ведёт в профиль; бренд — логотип и цвета.
+check('business card shows how full the profile is', (await text(clientView)).includes('Профиль заполнен на'));
+check('no separate «My business» link on the client home', !(await text(clientView)).includes('Мой бизнес'));
+await clientView.locator('::-p-text(Дополнить профиль)').click();
+check('business card opens the profile with the brand section',
+  await waitText(clientView, 'Фирменные цвета') && (await text(clientView)).includes('#7A4B2A'));
+await clientView.locator('[aria-label="#2563EB"]').click();
+const [logoChooser] = await Promise.all([
+  clientView.waitForFileChooser(),
+  clientView.locator('::-p-text(Загрузить логотип)').click(),
+]);
+await logoChooser.accept([new URL('../../apps/mobile/assets/icon.png', import.meta.url).pathname]);
+check('logo is uploaded and shown', await clientView.waitForSelector('img[src*="/object/public/brand/"]', { timeout: 9000 }).then(() => true, () => false));
+await clientView.locator('::-p-text(Сохранить)').click();
+await waitText(clientView, 'Мои заказы');
+await clientView.screenshot({ path: `${SCREENS}client-home-business.png`, fullPage: true });
+await clientView.goto(`${BASE}/business`, { waitUntil: 'networkidle0' });
+check('brand color and logo are saved',
+  await waitText(clientView, '#2563EB') &&
+  await clientView.waitForSelector('img[src*="/object/public/brand/"]', { timeout: 5000 }).then(() => true, () => false));
+await clientView.goto(BASE, { waitUntil: 'networkidle0' });
+
 // AI-агенты: пишем дизайнеру своими словами → «Отправить» → картинка сразу в чате → в задачу.
 const agentBoss = await openAs('manager@demo.am');
 await agentBoss.locator('::-p-text(🤖 AI-агенты)').click();

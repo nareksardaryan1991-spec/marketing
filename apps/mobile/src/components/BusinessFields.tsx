@@ -12,6 +12,7 @@ export const BUSINESS_FIELDS = [
   'tone',
   'goals',
   'competitors',
+  'example_posts',
   'instagram_url',
   'facebook_url',
   'tiktok_url',
@@ -89,6 +90,12 @@ export function BusinessFields({
           {...bind('goals')}
         />
         <Field label={t('onboarding.competitors')} multiline {...bind('competitors')} />
+        <Field
+          label={t('onboarding.examplePosts')}
+          hint={t('onboarding.examplePostsHint')}
+          multiline
+          {...bind('example_posts')}
+        />
       </>
     );
   }

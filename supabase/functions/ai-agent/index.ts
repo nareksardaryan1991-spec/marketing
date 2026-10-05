@@ -7,6 +7,7 @@
 // Запуски работают в фоне: функция сразу отвечает { run_id }, приложение опрашивает agent_runs.
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
+import { brandColors, businessProfile } from '../_shared/business.ts';
 import { askClaude } from '../_shared/claude.ts';
 import { corsHeaders, json } from '../_shared/http.ts';
 import { adminClient, userClient } from '../_shared/supabase.ts';
@@ -25,7 +26,7 @@ import {
   type ManagerPlan,
   type RequestOutput,
 } from './agents.ts';
-import { generateBackground, hasImageGenerator, layoutSvg, renderPng, type Format } from './image.ts';
+import { type Brand, generateBackground, hasImageGenerator, layoutSvg, NO_BRAND, renderPng, type Format } from './image.ts';
 
 // Сколько запусков в день можно одному человеку — защита от лишних расходов.
 const DAILY_LIMIT = 30;
@@ -42,6 +43,17 @@ async function claudeError(response: Response) {
 }
 
 type Run = { id: string; userId: string; agent: AgentId; language: string; instructions: string | null };
+
+// Бренд клиента для картинок дизайнера: логотип читаем из bucket brand (если не вышло — без него).
+// deno-lint-ignore no-explicit-any
+async function loadBrand(business: any): Promise<Brand> {
+  let logo: Uint8Array | null = null;
+  if (business?.logo_path) {
+    const { data } = await adminClient().storage.from('brand').download(business.logo_path);
+    if (data) logo = new Uint8Array(await data.arrayBuffer());
+  }
+  return { name: business?.name ?? '', colors: brandColors(business), logo };
+}
 
 async function runTaskAgent(run: Run, db: SupabaseClient, taskId: string) {
   const admin = adminClient();
@@ -66,10 +78,11 @@ async function runTaskAgent(run: Run, db: SupabaseClient, taskId: string) {
   if (agent === 'designer') {
     const format: Format = context.task.service_id === 'story' ? 'story' : 'feed';
     const images = (output.images ?? []).slice(0, format === 'story' ? 1 : 3);
+    const brand = await loadBrand(context.task.businesses);
     for (const [i, image] of images.entries()) {
       const background = await generateBackground(image.image_prompt, format);
       if (background) generated++;
-      const png = await renderPng(await layoutSvg(image, context.task.businesses?.name ?? '', format, background));
+      const png = await renderPng(await layoutSvg(image, brand, format, background));
       const path = `${taskId}/ai-${run.id.slice(0, 8)}-${i + 1}.png`;
       const { error } = await admin.storage.from('deliverables').upload(path, png, { contentType: 'image/png' });
       if (error) throw new Error(`upload: ${error.message}`);
@@ -135,7 +148,7 @@ async function runRequest(run: Run, prompt: string) {
       for (const [i, scene] of (output.scenes ?? []).slice(0, 3).entries()) {
         const image = await generateBackground(scene.image_prompt, scene.format);
         const design = { ...scene, text_position: 'bottom' as const };
-        const png = await renderPng(await layoutSvg(design, '', scene.format, image));
+        const png = await renderPng(await layoutSvg(design, NO_BRAND, scene.format, image));
         const path = `${run.userId}/${run.id}-${i + 1}.png`;
         const { error } = await admin.storage.from('agent-files').upload(path, png, { contentType: 'image/png' });
         if (error) throw new Error(`upload: ${error.message}`);
@@ -215,9 +228,7 @@ async function runManagerAgent(run: Run, db: SupabaseClient, orderId: string) {
   const b = (orderRes.data.businesses ?? {}) as any;
   const prompt = [
     `## Today: ${today}`,
-    `## Client business\n${[b.name, b.industry, b.city].filter(Boolean).join(', ')}` +
-      `${b.description ? `\nAbout: ${b.description}` : ''}${b.target_audience ? `\nCustomers: ${b.target_audience}` : ''}` +
-      `${b.tone ? `\nTone of voice: ${b.tone}` : ''}${b.goals ? `\nGoals: ${b.goals}` : ''}`,
+    businessProfile(b),
     orderRes.data.notes ? `## Client notes for the order\n${orderRes.data.notes}` : '',
     `## Tasks to plan\n${tasks
       .map(

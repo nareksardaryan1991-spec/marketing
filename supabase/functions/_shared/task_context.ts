@@ -2,6 +2,8 @@
 // Читается от имени пользователя — RLS отдаёт только то, что ему можно видеть.
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
+import { businessProfile } from './business.ts';
+
 export const TASK_STATUS_EN: Record<string, string> = {
   new: 'not assigned yet',
   assigned: 'assigned, not started',
@@ -37,22 +39,6 @@ export async function loadTaskContext(db: SupabaseClient, taskId: string) {
       .limit(5),
   ]);
 
-  // deno-lint-ignore no-explicit-any
-  const b = (task.businesses ?? {}) as any;
-  const businessLines = [
-    ['Name', b.name],
-    ['Industry', b.industry],
-    ['City', b.city],
-    ['About', b.description],
-    ['Customers', b.target_audience],
-    ['Tone of voice', b.tone],
-    ['Goals', b.goals],
-    ['Competitors / references', b.competitors],
-    ['Instagram', b.instagram_url],
-  ]
-    .filter(([, value]) => value)
-    .map(([label, value]) => `- ${label}: ${value}`)
-    .join('\n');
   const versions = (versionsRes.data ?? []).map(
     (v) => `- v${v.version}: ${(v.files ?? []).length} file(s)${v.caption ? `, caption: ${String(v.caption).slice(0, 500)}` : ''}`,
   );
@@ -64,7 +50,8 @@ export async function loadTaskContext(db: SupabaseClient, taskId: string) {
   const t = task as any;
 
   const text = [
-    `## Client business\n${businessLines}`,
+    // deno-lint-ignore no-explicit-any
+    businessProfile(task.businesses as any),
     `## Order\n${(itemsRes.data ?? [])
       // deno-lint-ignore no-explicit-any
       .map((i: any) => `- ${i.platforms?.name ? `${i.platforms.name} ` : ''}${nameOf(i.services)} × ${i.quantity}`)

@@ -147,10 +147,27 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-export async function layoutSvg(design: DesignImage, brand: string, format: Format, background: Uint8Array | null) {
+// Бренд клиента для макета: название (если нет логотипа), фирменные цвета, логотип PNG/JPEG.
+export type Brand = { name: string; colors: string[]; logo: Uint8Array | null };
+
+export const NO_BRAND: Brand = { name: '', colors: [], logo: null };
+
+function imageMime(bytes: Uint8Array): string | null {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'image/jpeg';
+  return null;
+}
+
+export async function layoutSvg(design: DesignImage, brand: Brand, format: Format, background: Uint8Array | null) {
   const fonts = await prepare();
   const { w, h } = SIZE[format];
-  const accent = HEX.test(design.accent_color) ? design.accent_color : '#4F46E5';
+  // Есть фирменные цвета — акцент только из них, даже если модель предложила другой.
+  const own = brand.colors.find((c) => c.toLowerCase() === design.accent_color.toLowerCase());
+  const accent = brand.colors.length
+    ? (own ?? brand.colors[0])
+    : HEX.test(design.accent_color)
+      ? design.accent_color
+      : '#4F46E5';
   const pad = 72;
   const headSize = format === 'story' ? 96 : 84;
   const subSize = format === 'story' ? 48 : 44;
@@ -187,9 +204,19 @@ export async function layoutSvg(design: DesignImage, brand: string, format: Form
     parts.push(`<rect x="${pad}" y="${y}" width="${(textWidth + 64).toFixed(1)}" height="96" rx="48" fill="${accent}"/>`);
     for (const run of price) parts.push(runSvg(run, pad + 32 + run.x, y + 66, 52, 700));
   }
-  const brandY = design.text_position === 'top' ? h - pad : pad + 32;
-  for (const run of layoutText(brand.toUpperCase(), 32, 700, w - pad * 2, 1, fonts)[0] ?? []) {
-    parts.push(runSvg(run, pad + run.x, brandY, 32, 700, ' fill-opacity="0.9"'));
+  // Логотип (или название бренда) — в углу напротив текста.
+  const logoMime = brand.logo ? imageMime(brand.logo) : null;
+  if (brand.logo && logoMime) {
+    const logoH = 112;
+    const logoY = design.text_position === 'top' ? h - pad - logoH : pad - 16;
+    parts.push(
+      `<image href="data:${logoMime};base64,${toBase64(brand.logo)}" x="${pad}" y="${logoY}" width="320" height="${logoH}" preserveAspectRatio="xMinYMid meet"/>`,
+    );
+  } else {
+    const brandY = design.text_position === 'top' ? h - pad : pad + 32;
+    for (const run of layoutText(brand.name.toUpperCase(), 32, 700, w - pad * 2, 1, fonts)[0] ?? []) {
+      parts.push(runSvg(run, pad + run.x, brandY, 32, 700, ' fill-opacity="0.9"'));
+    }
   }
 
   // Затемнение под текстом, чтобы он читался на любом фоне. Без текста картинку не трогаем.

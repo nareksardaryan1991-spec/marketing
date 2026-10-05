@@ -48,6 +48,10 @@ export type Business = {
   facebook_url: string | null;
   tiktok_url: string | null;
   website_url: string | null;
+  // «Мозг» для AI-агентов (миграция 0022).
+  example_posts: string | null;
+  brand_colors: string[];
+  logo_path: string | null;
   created_at: string;
   updated_at: string;
 };

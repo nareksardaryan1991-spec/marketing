@@ -110,11 +110,20 @@ BUSINESS = {
     'target_audience': 'Студенты и офисные сотрудники 20–35 лет', 'tone': 'Дружелюбный, с юмором',
     'goals': 'Больше гостей по утрам, рост подписчиков', 'competitors': 'Coffeeshop Company',
     'instagram_url': 'https://instagram.com/cafe_aroma', 'facebook_url': None, 'tiktok_url': None,
-    'website_url': None, 'created_at': day(-40), 'updated_at': day(-2),
+    'website_url': None, 'example_posts': 'Осень в каждой чашке 🍂 Тыквенный латте вернулся — тёплый, пряный, как вы любили. Ждём вас утром на Абовяна 12! #CafeAroma #Ереван',
+    'brand_colors': ['#7A4B2A', '#F2C14E'], 'logo_path': None, 'created_at': day(-40), 'updated_at': day(-2),
 }
 
 
 BUSINESSES.append(BUSINESS)
+# Логотипы бизнесов (bucket brand): путь -> (тип, байты).
+BRAND_FILES = {}
+
+
+def can_edit_business(business_id):
+    profile = me()
+    business = next((b for b in BUSINESSES if b['id'] == business_id), None)
+    return bool(profile and business and (business['owner_id'] == profile['id'] or is_manager(profile['role'])))
 
 
 def service(sid, ru, hy, en, desc, price, order):
@@ -1107,6 +1116,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(photo[1])
             return None
+        # Логотипы (bucket brand): публичные ссылки, загрузка — владельцу бизнеса или менеджеру.
+        if path.startswith('/storage/v1/object/public/brand/'):
+            logo = BRAND_FILES.get(urllib.parse.unquote(path[len('/storage/v1/object/public/brand/'):]))
+            if not logo:
+                return self.reply({'error': 'not found'}, 404)
+            self.send_response(200)
+            self.cors()
+            self.send_header('Content-Type', logo[0])
+            self.send_header('Content-Length', str(len(logo[1])))
+            self.end_headers()
+            self.wfile.write(logo[1])
+            return None
+        if path.startswith('/storage/v1/object/brand/') and self.command == 'POST':
+            name = urllib.parse.unquote(path[len('/storage/v1/object/brand/'):])
+            if not can_edit_business(name.split('/')[0]):
+                return self.reply({'statusCode': '403', 'error': 'Unauthorized',
+                                   'message': 'new row violates row-level security policy'}, 403)
+            length = int(self.headers.get('Content-Length') or 0)
+            BRAND_FILES[name] = (self.headers.get('Content-Type') or 'image/png', self.rfile.read(length))
+            return self.reply({'Key': 'brand/' + name, 'Id': name})
+        if path == '/storage/v1/object/brand' and self.command == 'DELETE':
+            removed = [n for n in self.body().get('prefixes', []) if can_edit_business(n.split('/')[0]) and BRAND_FILES.pop(n, None)]
+            return self.reply([{'name': n} for n in removed])
         if path.startswith('/storage/v1/object/avatars/') and self.command == 'POST':
             name = urllib.parse.unquote(path[len('/storage/v1/object/avatars/'):])
             if name.split('/')[0] != me()['id']:
@@ -1255,6 +1287,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(png)
             return None
+
+        if self.command == 'PATCH' and path == '/rest/v1/businesses':
+            # Профиль бизнеса меняет владелец или менеджер (как правило в базе).
+            data, profile, q = self.body(), me(), urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            business = next((b for b in BUSINESSES if b['id'] == eq(q, 'id')), None)
+            if not business or not (business['owner_id'] == profile['id'] or is_manager(profile['role'])):
+                return self.reply([])
+            colors = data.get('brand_colors', business.get('brand_colors') or [])
+            if len(colors) > 5 or not all(re.fullmatch(r'#[0-9A-Fa-f]{6}', c) for c in colors):
+                return self.reply({'message': 'violates check constraint "businesses_brand_colors_check"'}, 400)
+            logo = data.get('logo_path', business.get('logo_path'))
+            if logo and not logo.startswith(business['id'] + '/'):
+                return self.reply({'message': 'violates check constraint "businesses_check"'}, 400)
+            business.update({k: v for k, v in data.items() if k in BUSINESS and k not in ('id', 'owner_id')})
+            business['updated_at'] = now_iso()
+            return self.reply(business if self.wants_object() else [business])
 
         if self.command == 'POST' and path == '/rest/v1/businesses':
             data, profile = self.body(), me()

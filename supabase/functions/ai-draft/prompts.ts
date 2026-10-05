@@ -1,3 +1,5 @@
+import { type BusinessRow, businessProfile } from '../_shared/business.ts';
+
 export type DraftKind = 'caption' | 'ideas' | 'reel_script' | 'content_plan';
 
 export const DRAFT_KINDS: DraftKind[] = ['caption', 'ideas', 'reel_script', 'content_plan'];
@@ -25,7 +27,7 @@ const TASKS: Record<DraftKind, string> = {
 };
 
 export type BriefContext = {
-  business: Record<string, string | null>;
+  business: BusinessRow;
   serviceName: string;
   platform: string | null;
   taskNumber: number;
@@ -46,25 +48,8 @@ export function buildUserPrompt(
   ctx: BriefContext,
   instructions: string | null,
 ): string {
-  const b = ctx.business;
-  const businessLines = [
-    ['Name', b.name],
-    ['Industry', b.industry],
-    ['City', b.city],
-    ['About', b.description],
-    ['Customers', b.target_audience],
-    ['Tone of voice', b.tone],
-    ['Goals', b.goals],
-    ['Competitors / references', b.competitors],
-    ['Instagram', b.instagram_url],
-    ['Website', b.website_url],
-  ]
-    .filter(([, value]) => value)
-    .map(([label, value]) => `- ${label}: ${value}`)
-    .join('\n');
-
   return [
-    section('Client business', businessLines),
+    `${businessProfile(ctx.business)}\n`,
     section('Order', ctx.orderItems.map((line) => `- ${line}`).join('\n')),
     section('Client notes for the order', ctx.orderNotes),
     section(

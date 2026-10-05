@@ -944,4 +944,22 @@ const agentFolders = async (user) => (await as(user, `select name from storage.o
 check('agent files: own folder only, managers see all',
   (await agentFolders(DESIGNER)).join() === DESIGNER && (await agentFolders(MANAGER)).length === 2 && (await agentFolders(CLIENT)).length === 0);
 
+// Профиль бизнеса («мозг» агентов): примеры постов, фирменные цвета, логотип.
+await as(CLIENT, `update businesses set brand_colors = '{#E5484D,#111827}', example_posts = 'Пост 1' where id = $1`, [bizId]);
+check('client saves brand colors and example posts',
+  (await as(CLIENT, 'select brand_colors, example_posts from businesses where id = $1', [bizId])).rows[0].brand_colors.join() === '#E5484D,#111827');
+await fails('brand color must be #RRGGBB', () => as(CLIENT, `update businesses set brand_colors = '{red}' where id = $1`, [bizId]));
+await fails('at most five brand colors', () => as(CLIENT,
+  `update businesses set brand_colors = '{#000000,#111111,#222222,#333333,#444444,#555555}' where id = $1`, [bizId]));
+await fails('logo must be in the business folder', () => as(CLIENT, `update businesses set logo_path = 'other/logo.png' where id = $1`, [bizId]));
+await as(CLIENT, `insert into storage.objects (bucket_id, name) values ('brand', $1)`, [`${bizId}/logo-1.png`]);
+await as(CLIENT, `update businesses set logo_path = $2 where id = $1`, [bizId, `${bizId}/logo-1.png`]);
+await fails('stranger cannot upload a logo for someone else', () => as(OTHER, `insert into storage.objects (bucket_id, name) values ('brand', $1)`, [`${bizId}/logo-2.png`]));
+await as(MANAGER, `insert into storage.objects (bucket_id, name) values ('brand', $1)`, [`${bizId}/logo-3.png`]);
+await fails('brand files only in a business folder', () => as(MANAGER, `insert into storage.objects (bucket_id, name) values ('brand', 'junk/logo.png')`));
+check('stranger does not see brand files of another business',
+  (await as(OTHER, `select name from storage.objects where bucket_id = 'brand'`)).rows.length === 0 &&
+  (await as(CLIENT, `select name from storage.objects where bucket_id = 'brand'`)).rows.length === 2);
+await fails('stranger cannot delete a logo', () => as(OTHER, `delete from storage.objects where bucket_id = 'brand' returning name`).then(r => { if (!r.rows.length) throw new Error('nothing deleted'); }));
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

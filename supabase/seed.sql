@@ -50,13 +50,16 @@ update public.profiles set role = 'pending' where email = 'newbie@demo.am';
 
 -- ---------- Бизнес клиента ----------
 insert into public.businesses (
-  id, owner_id, name, industry, city, description, target_audience, tone, goals, competitors, instagram_url
+  id, owner_id, name, industry, city, description, target_audience, tone, goals, competitors, instagram_url,
+  example_posts, brand_colors
 ) values (
   '22222222-0000-4000-8000-000000000001', '11111111-0000-4000-8000-000000000004',
   'Cafe Aroma', 'Кофейня', 'Ереван', 'Кофейня в центре: авторский кофе и десерты',
   'Студенты и офисные сотрудники 20–35 лет', 'Дружелюбный, с юмором',
   'Больше гостей по утрам, рост подписчиков', 'Coffeeshop Company',
-  'https://instagram.com/cafe_aroma'
+  'https://instagram.com/cafe_aroma',
+  'Осень в каждой чашке 🍂 Тыквенный латте вернулся — тёплый, пряный, как вы любили. Ждём вас утром на Абовяна 12! #CafeAroma #Ереван',
+  '{#7A4B2A,#F2C14E}'
 );
 
 -- ---------- Оплаченный ежемесячный заказ ----------

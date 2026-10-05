@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AssistantCard } from '@/components/AssistantCard';
+import { BusinessCard } from '@/components/BusinessCard';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { OrdersList } from '@/components/OrdersList';
 import { ChatsButton } from '@/components/ChatsButton';
@@ -114,22 +115,11 @@ function ClientHome({ business }: { business: Business }) {
   const { t } = useI18n();
   return (
     <>
-      <Card>
-        <Text style={styles.label}>{t('home.yourBusiness')}</Text>
-        <Text style={styles.cardTitle}>{business.name}</Text>
-        <Text style={styles.muted}>
-          {[business.industry, business.city].filter(Boolean).join(' · ')}
-        </Text>
-      </Card>
+      <BusinessCard business={business} />
       <ReviewInbox />
       <Button title={t('order.newOrder')} onPress={() => router.push('/new-order')} />
       <Button title={t('reports.title')} variant="ghost" onPress={() => router.push('/reports')} />
       <Button title={t('social.title')} variant="ghost" onPress={() => router.push('/social')} />
-      <Button
-        title={t('business.title')}
-        variant="ghost"
-        onPress={() => router.push('/business')}
-      />
       <OrdersList title={t('order.myOrders')} />
     </>
   );
@@ -174,7 +164,6 @@ function ClientsList() {
 const styles = StyleSheet.create({
   link: { fontSize: 15, fontWeight: '600', color: colors.primary, marginTop: 8 },
   cardTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
-  label: { fontSize: 13, color: colors.muted, textTransform: 'uppercase' },
   muted: { fontSize: 15, color: colors.muted },
   clientRow: {
     paddingVertical: 8,
