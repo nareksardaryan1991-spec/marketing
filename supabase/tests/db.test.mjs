@@ -156,7 +156,7 @@ check('returned to in_progress with comment',
 check('returned draft stays hidden from client',
   (await as(CLIENT, 'select * from deliverables where task_id=$1', [task])).rows.length === 0 &&
   (await as(CLIENT, `select * from storage.objects`)).rows.length === 0);
-await as(FREELANCER, `select submit_deliverable($1, 'Осенний пост, 5000 драм', array[$2])`, [task, task + '/photo.png']);
+await as(FREELANCER, `select submit_deliverable($1, 'Осенний пост, 5000 драм', array[$2], 'цену взял из прайса')`, [task, task + '/photo.png']);
 check('draft in internal review hidden from client', (await as(CLIENT, 'select * from deliverables where task_id=$1', [task])).rows.length === 0);
 await as(MANAGER, `select review_task($1, true)`, [task]);
 const versions = (await as(CLIENT, 'select version from deliverables where task_id=$1 order by version', [task])).rows.map(r => r.version);
@@ -164,6 +164,17 @@ check('client sees only the version sent to them, task in client_review',
   JSON.stringify(versions) === '[2]' && (await as(CLIENT, 'select status from tasks where id=$1', [task])).rows[0].status === 'client_review');
 check('client sees file of the sent version', (await as(CLIENT, `select * from storage.objects`)).rows.length === 1);
 check('team still sees all versions', (await as(DESIGNER, 'select version from deliverables where task_id=$1', [task])).rows.length === 2);
+check('client cannot read internal notes of a sent version',
+  (await as(CLIENT, 'select * from deliverable_notes')).rows.length === 0 &&
+  (await as(OTHER, 'select * from deliverable_notes')).rows.length === 0);
+check('assignee sees notes of all versions',
+  (await as(FREELANCER, 'select note from deliverable_notes where task_id=$1 order by note', [task])).rows.map(r => r.note).join('|') === 'v1|цену взял из прайса');
+await fails('notes cannot be written directly', () => as(FREELANCER, `insert into deliverable_notes (deliverable_id, task_id, note) select id, task_id, 'x' from deliverables where task_id=$1 limit 1`, [task]));
+check('version without a note has no note row',
+  (await as(null, `select count(*)::int as n from deliverable_notes`)).rows[0].n === 2);
+await fails('task_payload is not callable by users', () => as(CLIENT, `select task_payload(t) from tasks t limit 1`));
+await fails('task_payload is not callable without sign-in', async () => { await db.exec('set role anon'); try { await db.query('select task_payload(null::tasks)'); } finally { await db.exec('reset role'); } });
+await fails('manager_ids is not callable by users', () => as(CLIENT, 'select manager_ids()'));
 check('client cannot read internal comments', (await as(CLIENT, 'select * from task_comments')).rows.length === 0);
 await as(FREELANCER, `insert into task_comments (task_id, author_id, body) values ($1, $2, 'ок')`, [task, FREELANCER]);
 await fails('cannot comment as someone else', () => as(FREELANCER, `insert into task_comments (task_id, author_id, body) values ($1, $2, 'x')`, [task, MANAGER]));
@@ -900,7 +911,8 @@ await fails('employee cannot write agent runs directly', () => as(MANAGER, `inse
 await fails('nobody can mark own run as done', () => as(MANAGER, `update agent_runs set status = 'done' where id = $1 returning id`, [run]).then(r => { if (!r.rows.length) throw new Error('no rows'); }));
 await fails('employee cannot submit as an agent', () => as(MANAGER, `select submit_agent_deliverable($1, $2, 'designer', 'x')`, [agentTask.id, MANAGER]));
 await fails('agent files must be in the task folder', () => as(null, `select submit_agent_deliverable($1, $2, 'designer', 'x', array['other/a.png'])`, [agentTask.id, MANAGER]));
-await as(null, `select submit_agent_deliverable($1, $2, 'designer', 'AI пост', array[$3])`, [agentTask.id, MANAGER, `${agentTask.id}/ai-1.png`]);
+await as(null, `select submit_agent_deliverable($1, $2, 'designer', 'AI пост', array[$3], '🤖 AI designer: цена — заглушка')`, [agentTask.id, MANAGER, `${agentTask.id}/ai-1.png`]);
+check('agent note goes to internal notes', (await as(MANAGER, 'select note from deliverable_notes where task_id = $1', [agentTask.id])).rows[0]?.note === '🤖 AI designer: цена — заглушка');
 const agentDone = (await as(MANAGER, 'select status, assignee_id from tasks where id = $1', [agentTask.id])).rows[0];
 const agentVersion = (await as(MANAGER, 'select agent, created_by from deliverables where task_id = $1', [agentTask.id])).rows[0];
 check('agent version goes to manager review, launcher becomes responsible',

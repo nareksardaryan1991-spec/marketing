@@ -152,7 +152,8 @@ export type Deliverable = {
   version: number;
   caption: string | null;
   files: string[];
-  note: string | null;
+  // Заметка для менеджера — в отдельной таблице deliverable_notes, видна только команде.
+  note?: string | null;
   created_by: string;
   created_at: string;
   // Какой AI-агент сделал версию (null — человек).

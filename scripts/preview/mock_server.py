@@ -878,7 +878,16 @@ def rows(table, q):
                       reverse=q.get('order', [''])[0] == 'receipt_no.desc')
     if table == 'deliverables':
         tid = eq(q, 'task_id')
-        return [d for t in visible_tasks() for d in t['deliverables'] if not tid or d['task_id'] == tid]
+        # Заметка для менеджера в базе лежит отдельно (deliverable_notes) — здесь её не отдаём.
+        return [{k: v for k, v in d.items() if k != 'note'}
+                for t in visible_tasks() for d in t['deliverables'] if not tid or d['task_id'] == tid]
+    if table == 'deliverable_notes':
+        if not is_employee(role):
+            return []
+        tid = eq(q, 'task_id')
+        return [{'deliverable_id': d['id'], 'task_id': d['task_id'], 'note': d['note']}
+                for t in visible_tasks() for d in t['deliverables']
+                if d.get('note') and (not tid or d['task_id'] == tid)]
     if table == 'messages':
         ids = my_order_ids() if role != 'freelancer' else set()
         oid = eq(q, 'order_id')

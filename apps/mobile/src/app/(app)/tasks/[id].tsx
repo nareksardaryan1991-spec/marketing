@@ -49,7 +49,7 @@ export default function TaskScreen() {
   const [agentRefresh, setAgentRefresh] = useState(0);
 
   const load = useCallback(async () => {
-    const [taskRes, versionsRes, commentsRes, approvalsRes] = await Promise.all([
+    const [taskRes, versionsRes, notesRes, commentsRes, approvalsRes] = await Promise.all([
       supabase
         .from('tasks')
         .select('*, services(name), businesses(*), orders(notes)')
@@ -60,6 +60,8 @@ export default function TaskScreen() {
         .select('*')
         .eq('task_id', id)
         .order('version', { ascending: false }),
+      // Клиенту правила базы не отдают заметки — придёт пустой список.
+      supabase.from('deliverable_notes').select('deliverable_id, note').eq('task_id', id),
       supabase.from('task_comments').select('*').eq('task_id', id).order('created_at'),
       supabase
         .from('approvals')
@@ -71,7 +73,12 @@ export default function TaskScreen() {
     setApprovals((approvalsRes.data as Approval[] | null) ?? []);
     setError(taskRes.error?.message ?? null);
     setTask(taskRes.data ?? null);
-    setVersions((versionsRes.data as Deliverable[] | null) ?? []);
+    const notes = new Map(
+      ((notesRes.data as { deliverable_id: string; note: string }[] | null) ?? []).map((n) => [n.deliverable_id, n.note]),
+    );
+    setVersions(
+      ((versionsRes.data as Deliverable[] | null) ?? []).map((v) => ({ ...v, note: notes.get(v.id) ?? null })),
+    );
     const commentRows = (commentsRes.data as TaskComment[] | null) ?? [];
     setComments(commentRows);
 
