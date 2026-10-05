@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Text } from 'react-native';
 
 import { useI18n } from '@/i18n';
+import { agentById } from '@/lib/agents';
 import { supabase } from '@/lib/supabase';
 
+import { agentLabel } from '../agents/AgentAvatar';
 import { Button, Card, ErrorText, Field } from '../ui';
 import { taskStyles as styles } from './styles';
 
@@ -19,6 +21,7 @@ export function ReviewPanel({
   onDone: () => void;
 }) {
   const { t } = useI18n();
+  const reviewAgent = agentById(agent);
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<'approve' | 'return' | null>(null);
@@ -46,9 +49,9 @@ export function ReviewPanel({
   return (
     <Card>
       <Text style={styles.cardTitle}>{t('task.reviewTitle')}</Text>
-      {agent ? (
+      {reviewAgent ? (
         <Text style={styles.muted}>
-          🤖 {t('agents.reviewHint', { name: t(`agents.names.${agent}`) })}
+          🤖 {t('agents.reviewHint', { name: agentLabel(t, reviewAgent) })}
         </Text>
       ) : null}
       <Field label={t('task.comment')} multiline value={comment} onChangeText={setComment} />

@@ -1,36 +1,18 @@
 // AI-агенты по ролям. Каждый получает контекст задачи (бриф, правки клиента, прошлые версии)
 // и возвращает JSON по своей схеме; из него собирается версия для проверки менеджером.
 
-export type AgentId =
-  | 'copywriter'
-  | 'designer'
-  | 'smm'
-  | 'video'
-  | 'photographer'
-  | 'targetologist'
-  | 'seo'
-  | 'manager';
+export type AgentId = 'smm' | 'designer' | 'scriptwriter' | 'targetologist' | 'seo' | 'manager';
 
-export const AGENT_IDS: AgentId[] = [
-  'copywriter',
-  'designer',
-  'smm',
-  'video',
-  'photographer',
-  'targetologist',
-  'seo',
-  'manager',
-];
+export const AGENT_IDS: AgentId[] = ['smm', 'designer', 'scriptwriter', 'targetologist', 'seo', 'manager'];
 
 // Подпись в заметке к версии — менеджер сразу видит, кто её сделал.
+// Имена те же, что в приложении (apps/mobile/src/i18n, agents.names).
 export const AGENT_NAME_EN: Record<AgentId, string> = {
-  copywriter: 'AI copywriter',
-  designer: 'AI designer',
-  smm: 'AI SMM specialist',
-  video: 'AI video producer',
-  photographer: 'AI photographer',
-  targetologist: 'AI ads specialist',
-  seo: 'AI SEO specialist',
+  smm: 'Ani, AI SMM',
+  designer: 'Lilit, AI designer',
+  scriptwriter: 'Aram, AI scriptwriter',
+  targetologist: 'Arsen, AI ads specialist',
+  seo: 'Sona, AI SEO',
   manager: 'AI manager',
 };
 
@@ -43,13 +25,11 @@ If the client requested changes, address every point of their feedback.
 "note" is a short message to the reviewing manager: what you did, assumptions, open questions.`;
 
 const ROLE: Record<Exclude<AgentId, 'manager'>, string> = {
-  copywriter: `Role: copywriter. Write one ready-to-publish caption for this piece: a hook in the first line, the main message, a call to action, and 5-10 relevant hashtags. Follow the platform's style and length.`,
+  smm: `Role: SMM specialist and copywriter. In "caption" give: 1) one ready-to-publish caption for this piece: a hook in the first line, the main message, a call to action, and 5-10 relevant hashtags, in the platform's style and length; 2) the best day and time to publish it for this audience in Armenia (Yerevan time) with a one-line reason; 3) how this piece fits a content plan for the whole order — a short numbered plan of all order items by week.`,
   designer: `Role: graphic designer. Design the visual(s) for this piece.
 For each image give: "image_prompt" — an English prompt for an image generator describing a photo-realistic or illustrated background WITHOUT any text, letters or logos, leaving calm empty space where the text will go; "headline" (max 6 words) and "subline" (max 12 words) in the output language — they are rendered on top of the image by the layout engine; "price" if the brief gives one, else empty; "text_position" (top, center or bottom — where the empty space is); "accent_color" as a hex color that fits the brand.
 Make one image for a post or story; for a carousel, 3 images that tell one story. "caption" is the post caption with hashtags.`,
-  smm: `Role: SMM specialist. In "caption" give: 1) the ready caption for this piece with hashtags; 2) the best day and time to publish it for this audience in Armenia (Yerevan time) with a one-line reason; 3) how this piece fits a content plan for the whole order — a short numbered plan of all order items by week.`,
-  video: `Role: video producer and editor. In "caption" give a script for a 15-30 second vertical video: the hook in the first 2 seconds, then numbered scenes with what is shown, on-screen text and voice-over, music mood, then subtitles as a separate block, then the publish caption with hashtags.`,
-  photographer: `Role: photographer. A human will do the shoot; you prepare it. In "caption" give: the shot list (numbered, each shot with framing, angle and what is in frame), light and location advice, props to bring, and which shots fit which format (feed 4:5, stories 9:16).`,
+  scriptwriter: `Role: scriptwriter for reels and TikTok who also plans the shoot; a human will film it. In "caption" give: 1) a script for a 15-30 second vertical video: the hook in the first 2 seconds, then numbered scenes with what is shown, on-screen text and voice-over, music mood, then subtitles as a separate block; 2) the shoot plan: a numbered shot list (framing, angle, what is in frame), light and location advice, props to bring, and which shots fit which format (feed 4:5, stories and reels 9:16); 3) the publish caption with hashtags. For a photo post, skip the script and give only the shoot plan and the caption.`,
   targetologist: `Role: paid ads specialist. In "caption" give: 3 ad variants (headline, primary text, call-to-action button), the target audience for Meta Ads (location, age, interests), and how to split the ad budget from the order across the variants for testing.`,
   seo: `Role: SEO and profile specialist. In "caption" give: a profile bio (max 150 characters) in the output language, 15 keywords and search phrases people in Armenia use for this business, 20 hashtags grouped into broad / niche / local, and 3 quick tips to be found in Instagram and Google Maps search.`,
 };
@@ -146,16 +126,14 @@ Reply in the language the employee writes in. The previous messages of this chat
 Never invent facts about a real client (prices, addresses, dates): use a clearly marked placeholder like [PRICE] instead.`;
 
 const REQUEST_ROLE: Record<Exclude<AgentId, 'manager'>, string> = {
-  copywriter: 'Role: copywriter. Write the requested texts ready to publish.',
   designer: `Role: graphic designer. Create the image(s) the employee describes.
 For each image write "image_prompt": a detailed English prompt for an image generator describing the whole scene exactly as requested (people, place, light, mood, camera angle, style), photo-realistic unless another style is asked. The image itself must contain no text or letters.
 "format": feed (4:5 post) by default, story (9:16) if they ask for stories/reels/vertical, square (1:1) if they ask for square.
 Make 1 image unless they ask for variants (at most 3).
 Text on the image ("headline", "subline", "price") ONLY if the employee asks for text, a slogan, a price or an announcement on the image; otherwise leave these empty strings. Write that text in the employee's language.
 "reply" is one or two short lines to the employee about what you made. "caption" is a post caption only if they asked for one, else an empty string.`,
-  smm: 'Role: SMM specialist. Answer with ready content: captions, content plans, publishing times, ideas — whatever is asked.',
-  video: 'Role: video producer and editor. Write scripts by scenes (shot, on-screen text, voice-over), subtitles and captions as requested.',
-  photographer: 'Role: photographer. Prepare shoot plans: shot lists with framing and angle, light, location, props.',
+  smm: 'Role: SMM specialist and copywriter. Answer with ready content: captions with hashtags, headlines, content plans, publishing times, ideas — whatever is asked.',
+  scriptwriter: 'Role: scriptwriter for reels and TikTok who also plans shoots. Write scripts by scenes (shot, on-screen text, voice-over), subtitles, shoot plans (shot list with framing and angle, light, location, props) and captions as requested.',
   targetologist: 'Role: paid ads specialist. Write ad variants, audiences and budget splits as requested.',
   seo: 'Role: SEO and profile specialist. Write profile bios, keywords, hashtags and search tips as requested.',
 };

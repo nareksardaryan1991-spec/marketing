@@ -1,7 +1,8 @@
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AgentAvatar, agentLabel } from '@/components/agents/AgentAvatar';
 import { AgentChat } from '@/components/agents/AgentChat';
 import { AgentLaunch } from '@/components/agents/AgentLaunch';
 import { AgentRuns } from '@/components/agents/AgentRuns';
@@ -9,7 +10,7 @@ import { Screen } from '@/components/Screen';
 import { colors } from '@/components/theme';
 import { Card, ErrorText } from '@/components/ui';
 import { useI18n } from '@/i18n';
-import { AGENTS, isAgentId } from '@/lib/agents';
+import { AGENTS, agentById } from '@/lib/agents';
 import { formatDate } from '@/lib/format';
 import { isManagerRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
@@ -22,15 +23,19 @@ export default function AgentScreen() {
   const { agent: param } = useLocalSearchParams<{ agent: string }>();
   const { t } = useI18n();
   const { profile } = useAuth();
-  const meta = AGENTS.find((a) => a.id === param);
+  // Старые ссылки (/agents/copywriter и т. п.) ведут к агенту, в которого его объединили.
+  const meta = agentById(param);
 
-  if (!meta || !isAgentId(param)) return null;
-  const title = `${meta.icon} ${t(`agents.names.${meta.id}`)}`;
+  if (!meta) return null;
+  const title = agentLabel(t, meta);
 
   return (
     <Screen>
       <Stack.Screen options={{ title }} />
-      <Text style={styles.does}>{t(`agents.does.${meta.id}`)}</Text>
+      <View style={styles.intro}>
+        <AgentAvatar agent={meta} size={48} />
+        <Text style={styles.does}>{t(`agents.does.${meta.id}`)}</Text>
+      </View>
       {meta.id === 'manager' ? (
         isManagerRole(profile?.role) ? <ManagerAgent /> : null
       ) : (
@@ -98,7 +103,8 @@ function ManagerAgent() {
 }
 
 const styles = StyleSheet.create({
-  does: { fontSize: 15, color: colors.muted },
+  intro: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  does: { flex: 1, fontSize: 15, color: colors.muted },
   title: { fontSize: 18, fontWeight: '600', color: colors.text },
   muted: { fontSize: 14, color: colors.muted },
   name: { fontSize: 16, fontWeight: '500', color: colors.text },

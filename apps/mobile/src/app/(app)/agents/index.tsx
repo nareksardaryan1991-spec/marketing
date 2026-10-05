@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AgentAvatar } from '@/components/agents/AgentAvatar';
 import { AgentRuns } from '@/components/agents/AgentRuns';
 import { Screen } from '@/components/Screen';
 import { colors } from '@/components/theme';
@@ -25,8 +26,11 @@ export default function AgentsScreen() {
             accessibilityRole="button"
             onPress={() => router.push(`/agents/${agent.id}`)}
             style={({ pressed }) => [styles.card, pressed && { opacity: 0.7 }]}>
-            <Text style={styles.icon}>{agent.icon}</Text>
+            <AgentAvatar agent={agent} size={56} />
             <Text style={styles.name}>{t(`agents.names.${agent.id}`)}</Text>
+            {agent.id !== 'manager' && (
+              <Text style={styles.role}>{t(`agents.roles.${agent.id}`)}</Text>
+            )}
             <Text style={styles.does}>{t(`agents.does.${agent.id}`)}</Text>
           </Pressable>
         ))}
@@ -49,7 +53,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
-  icon: { fontSize: 32 },
   name: { fontSize: 17, fontWeight: '600', color: colors.text },
+  role: { fontSize: 14, fontWeight: '500', color: colors.text },
   does: { fontSize: 14, color: colors.muted },
 });

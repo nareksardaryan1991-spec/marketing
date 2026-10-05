@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
 import { LANGUAGES, useI18n } from '@/i18n';
-import { startAgent, type AgentId } from '@/lib/agents';
+import { startAgent, type Agent, type AgentId } from '@/lib/agents';
 import type { Language } from '@/lib/types';
 
 import { Choice } from '../Choice';
+import { agentLabel } from './AgentAvatar';
 import { colors } from '../theme';
 import { Button, Card, ErrorText, Field } from '../ui';
 
@@ -17,7 +18,7 @@ export function AgentLaunch({
   disabled,
   onStarted,
 }: {
-  agents: { id: AgentId; icon: string }[];
+  agents: Agent[];
   taskId?: string;
   orderId?: string;
   // Пока не выбрана задача или заказ — кнопка подсказывает, что выбрать.
@@ -65,7 +66,7 @@ export function AgentLaunch({
           onChange={setAgent}
           options={agents.map((a) => ({
             value: a.id,
-            label: `${a.icon} ${t(`agents.names.${a.id}`)}`,
+            label: agentLabel(t, a),
             hint: t(`agents.does.${a.id}`),
           }))}
         />

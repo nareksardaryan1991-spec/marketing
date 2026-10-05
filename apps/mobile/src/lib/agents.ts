@@ -3,30 +3,51 @@ import { supabase } from './supabase';
 import type { Language } from './types';
 
 // Те же агенты, что в supabase/functions/ai-agent/agents.ts.
-export type AgentId =
-  | 'copywriter'
-  | 'designer'
-  | 'smm'
-  | 'video'
-  | 'photographer'
-  | 'targetologist'
-  | 'seo'
-  | 'manager';
+export type AgentId = 'smm' | 'designer' | 'scriptwriter' | 'targetologist' | 'seo' | 'manager';
 
-// services — для каких услуг агент подходит (null — для любых). Менеджер работает с заказом.
-export const AGENTS: { id: AgentId; icon: string; services: string[] | null }[] = [
-  { id: 'copywriter', icon: '✍️', services: null },
-  { id: 'designer', icon: '🎨', services: ['post', 'story'] },
-  { id: 'smm', icon: '📅', services: null },
-  { id: 'video', icon: '🎬', services: ['reel', 'video_shoot'] },
-  { id: 'photographer', icon: '📷', services: ['post', 'story', 'video_shoot'] },
-  { id: 'targetologist', icon: '🎯', services: ['ads_management', 'post', 'story', 'reel'] },
-  { id: 'seo', icon: '🔎', services: null },
-  { id: 'manager', icon: '🧭', services: null },
+export type Agent = {
+  id: AgentId;
+  // Цвет агента: фон аватара и акценты.
+  color: string;
+  // Аватар. Временный — SVG со значком роли; финальную иллюстрацию положить в assets/agents/
+  // (например, smm.png) и заменить здесь require — больше ничего менять не нужно.
+  avatar: number;
+  // Для каких услуг агент подходит (null — для любых). Менеджер работает с заказом.
+  services: string[] | null;
+};
+
+export const AGENTS: Agent[] = [
+  { id: 'smm', color: '#E5484D', avatar: require('../../assets/agents/smm.svg'), services: null },
+  { id: 'designer', color: '#C026D3', avatar: require('../../assets/agents/designer.svg'), services: ['post', 'story'] },
+  {
+    id: 'scriptwriter',
+    color: '#D97706',
+    avatar: require('../../assets/agents/scriptwriter.svg'),
+    services: ['reel', 'video_shoot', 'post', 'story'],
+  },
+  {
+    id: 'targetologist',
+    color: '#059669',
+    avatar: require('../../assets/agents/targetologist.svg'),
+    services: ['ads_management', 'post', 'story', 'reel'],
+  },
+  { id: 'seo', color: '#0284C7', avatar: require('../../assets/agents/seo.svg'), services: null },
+  { id: 'manager', color: '#4F46E5', avatar: require('../../assets/agents/manager.svg'), services: null },
 ];
+
+// Агенты, которых объединили (миграция 0021 переписала их записи, но в старых данных
+// и в демо они ещё могут встретиться): копирайтер → SMM, видео и фотограф → сценарист.
+const MERGED: Record<string, AgentId> = { copywriter: 'smm', video: 'scriptwriter', photographer: 'scriptwriter' };
 
 export function isAgentId(value: unknown): value is AgentId {
   return AGENTS.some((a) => a.id === value);
+}
+
+// Агент по id из базы, с учётом объединённых; null — если такого нет.
+export function agentById(id: string | null | undefined): Agent | null {
+  if (!id) return null;
+  const target = MERGED[id] ?? id;
+  return AGENTS.find((a) => a.id === target) ?? null;
 }
 
 export function agentsForService(serviceId: string) {

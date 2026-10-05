@@ -905,8 +905,9 @@ check('client, outsider and unassigned freelancer do not see agent runs',
   (await as(CLIENT, 'select * from agent_runs')).rows.length === 0 &&
   (await as(OTHER, 'select * from agent_runs')).rows.length === 0 &&
   (await as(FREELANCER, 'select * from agent_runs')).rows.length === 0);
-await as(null, `insert into agent_runs (task_id, agent, created_by) values ($1, 'copywriter', $2)`, [agentTask.id, FREELANCER]);
-check('freelancer sees only own runs', (await as(FREELANCER, 'select agent from agent_runs')).rows.map(r => r.agent).join() === 'copywriter');
+await as(null, `insert into agent_runs (task_id, agent, created_by) values ($1, 'smm', $2)`, [agentTask.id, FREELANCER]);
+check('freelancer sees only own runs', (await as(FREELANCER, 'select agent from agent_runs')).rows.map(r => r.agent).join() === 'smm');
+await fails('merged agents cannot be started any more', () => as(null, `insert into agent_runs (task_id, agent, created_by) values ($1, 'copywriter', $2)`, [agentTask.id, FREELANCER]));
 await fails('employee cannot write agent runs directly', () => as(MANAGER, `insert into agent_runs (task_id, agent, created_by) values ($1, 'seo', $2)`, [agentTask.id, MANAGER]));
 await fails('nobody can mark own run as done', () => as(MANAGER, `update agent_runs set status = 'done' where id = $1 returning id`, [run]).then(r => { if (!r.rows.length) throw new Error('no rows'); }));
 await fails('employee cannot submit as an agent', () => as(MANAGER, `select submit_agent_deliverable($1, $2, 'designer', 'x')`, [agentTask.id, MANAGER]));

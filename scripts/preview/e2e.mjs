@@ -415,7 +415,7 @@ check('client does not see AI agents', !(await text(clientView)).includes('AI-а
 const agentBoss = await openAs('manager@demo.am');
 await agentBoss.locator('::-p-text(🤖 AI-агенты)').click();
 await waitText(agentBoss, 'AI-менеджер');
-await agentBoss.locator('::-p-text(AI-дизайнер)').click();
+await agentBoss.locator('::-p-text(Лилит)').click();
 await waitText(agentBoss, 'Что сделать?');
 await agentBoss.type('textarea', 'Создай дизайн, где стоит человек, фон — море');
 await agentBoss.locator('::-p-text(➤ Отправить)').click();
@@ -432,14 +432,16 @@ await agentBoss.locator('::-p-text(Отправить на проверку)').c
 check('chat result goes to a task', await waitText(agentBoss, 'Отправлено в задачу'));
 await agentBoss.locator('::-p-text(Отправлено в задачу)').click();
 check('task shows the AI version for review',
-  await waitText(agentBoss, 'Эту версию сделал AI-дизайнер') && (await text(agentBoss)).includes('На проверке'));
+  await waitText(agentBoss, 'Версию сделал AI-агент: Лилит · Дизайнер') && (await text(agentBoss)).includes('На проверке'));
 await agentBoss.screenshot({ path: `${SCREENS}agent-task.png`, fullPage: true });
 
 // Копирайтер: пример запроса одним нажатием → текст в чате.
+// Старая ссылка на копирайтера ведёт к Ани (SMM): копирайтер объединён с ней.
 await agentBoss.goto(`${BASE}/agents/copywriter`, { waitUntil: 'networkidle0' });
+check('old copywriter link opens Ani (SMM)', await waitText(agentBoss, 'Ани · SMM'));
 await agentBoss.locator('::-p-text(Напиши пост для кофейни про осеннее меню)').click();
 await agentBoss.locator('::-p-text(➤ Отправить)').click();
-check('AI copywriter answers with text', await waitText(agentBoss, '#CafeAroma', 15000));
+check('AI SMM answers with text', await waitText(agentBoss, '#CafeAroma', 15000));
 
 // Менеджер-агент: план по заказу применяется только кнопкой.
 await agentBoss.goto(`${BASE}/agents/manager`, { waitUntil: 'networkidle0' });
@@ -454,7 +456,7 @@ await agentBoss.screenshot({ path: `${SCREENS}agent-manager.png`, fullPage: true
 // Сотрудник видит только свои задачи и не видит AI-менеджера.
 await team.goto(`${BASE}/agents`, { waitUntil: 'networkidle0' });
 check('employee sees role agents but not the AI manager',
-  await waitText(team, 'AI-копирайтер') && !(await text(team)).includes('AI-менеджер'));
+  await waitText(team, 'Сценарист') && (await text(team)).includes('Ани') && !(await text(team)).includes('AI-менеджер'));
 
 await reviewer.goto(`${BASE}/new-order`, { waitUntil: 'networkidle0' });
 await reviewer.locator('::-p-text(Instagram)').click();

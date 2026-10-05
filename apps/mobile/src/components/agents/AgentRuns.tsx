@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
-import { AGENTS, type AgentRun, type ManagerPlan } from '@/lib/agents';
+import { agentById, type AgentRun, type ManagerPlan } from '@/lib/agents';
 import { formatDateTime } from '@/lib/format';
 import { taskTitle } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
@@ -12,6 +12,7 @@ import type { Localized } from '@/lib/types';
 import { colors } from '../theme';
 import { Card, ErrorText } from '../ui';
 import { ManagerPlanView } from './ManagerPlanView';
+import { AgentTag } from './AgentAvatar';
 
 type Row = AgentRun & {
   tasks: {
@@ -83,13 +84,11 @@ export function AgentRuns({
       <Text style={styles.title}>{t('agents.history')}</Text>
       <ErrorText>{error}</ErrorText>
       {runs.map((run) => {
-        const meta = AGENTS.find((a) => a.id === run.agent);
+        const meta = agentById(run.agent);
         return (
           <View key={run.id} style={styles.row}>
             <View style={styles.head}>
-              <Text style={styles.name}>
-                {meta?.icon} {t(`agents.names.${run.agent}`)}
-              </Text>
+              {meta ? <AgentTag agent={meta} /> : <View />}
               <StatusLabel status={run.status} />
             </View>
             {run.tasks && run.task_id && (
@@ -146,7 +145,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  name: { fontSize: 16, fontWeight: '600', color: colors.text },
   link: { fontSize: 15, color: colors.primary },
   muted: { fontSize: 14, color: colors.muted },
   ok: { fontSize: 14, color: colors.text },

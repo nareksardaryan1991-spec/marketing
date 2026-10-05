@@ -2,8 +2,10 @@ import { Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
 import { formatDate } from '@/lib/format';
+import { agentById } from '@/lib/agents';
 import type { Deliverable } from '@/lib/types';
 
+import { agentLabel } from '../agents/AgentAvatar';
 import { colors } from '../theme';
 import { Card } from '../ui';
 import { FileList } from './FileList';
@@ -16,13 +18,15 @@ export function Versions({ versions }: { versions: Deliverable[] }) {
   return (
     <Card>
       <Text style={styles.cardTitle}>{t('task.versions')}</Text>
-      {versions.map((v) => (
+      {versions.map((v) => {
+        const agent = agentById(v.agent);
+        return (
         <View
           key={v.id}
           style={{ gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
           <Text style={styles.label}>
             {t('task.version', { n: v.version })} · {formatDate(v.created_at, language)}
-            {v.agent ? ` · 🤖 ${t(`agents.names.${v.agent}`)}` : ''}
+            {agent ? ` · 🤖 ${agentLabel(t, agent)}` : ''}
           </Text>
           {v.caption ? (
             <Text selectable style={styles.text}>
@@ -32,7 +36,8 @@ export function Versions({ versions }: { versions: Deliverable[] }) {
           <FileList paths={v.files} />
           {v.note ? <Text style={styles.muted}>{v.note}</Text> : null}
         </View>
-      ))}
+        );
+      })}
     </Card>
   );
 }

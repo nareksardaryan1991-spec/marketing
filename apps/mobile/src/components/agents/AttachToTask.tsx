@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
-import { AGENT_TASK_STATUSES, AGENTS, attachRun, type AgentId } from '@/lib/agents';
+import { AGENT_TASK_STATUSES, agentById, attachRun, type AgentId } from '@/lib/agents';
 import { taskTitle } from '@/lib/platforms';
 import { isManagerRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
@@ -25,7 +25,7 @@ export function AttachToTask({ runId, agent, onDone }: { runId: string; agent: A
 
   useEffect(() => {
     if (!profile) return;
-    const services = AGENTS.find((a) => a.id === agent)?.services;
+    const services = agentById(agent)?.services;
     let query = supabase
       .from('tasks')
       .select('*, services(name), businesses(name)')

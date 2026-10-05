@@ -5,17 +5,18 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
-import { AGENTS, type AgentRun, type ChatResult } from '@/lib/agents';
+import { agentById, type AgentRun, type ChatResult } from '@/lib/agents';
 import { signedUrls } from '@/lib/files';
 
 import { colors } from '../theme';
 import { ErrorText } from '../ui';
+import { AgentTag } from './AgentAvatar';
 import { AttachToTask } from './AttachToTask';
 
 // Одна пара «запрос сотрудника → ответ агента» в чате.
 export function AgentMessage({ run, onChanged }: { run: AgentRun; onChanged: () => void }) {
   const { t } = useI18n();
-  const meta = AGENTS.find((a) => a.id === run.agent);
+  const meta = agentById(run.agent);
   const result = run.status === 'done' ? (run.result as ChatResult | null) : null;
   const [attaching, setAttaching] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -34,9 +35,7 @@ export function AgentMessage({ run, onChanged }: { run: AgentRun; onChanged: () 
         </Text>
       </View>
       <View style={styles.agent}>
-        <Text style={styles.agentName}>
-          {meta?.icon} {t(`agents.names.${run.agent}`)}
-        </Text>
+        {meta && <AgentTag agent={meta} />}
         {run.status === 'running' && (
           <View style={styles.row}>
             <ActivityIndicator size="small" color={colors.primary} />
@@ -153,7 +152,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
-  agentName: { fontSize: 13, fontWeight: '600', color: colors.muted },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   muted: { fontSize: 14, color: colors.muted },
   text: { fontSize: 15, lineHeight: 22, color: colors.text },
