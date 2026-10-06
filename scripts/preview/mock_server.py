@@ -1214,7 +1214,7 @@ def rows(table, q):
     if table == 'payments':
         ids = my_order_ids()
         result = [p for p in PAYMENTS if p['order_id'] in ids]
-        for key_ in ('id', 'order_id', 'status'):
+        for key_ in ('id', 'order_id', 'status', 'provider'):
             if eq(q, key_):
                 result = [p for p in result if p[key_] == eq(q, key_)]
         return sorted(result, key=lambda p: p['receipt_no'] or 0,
@@ -1748,6 +1748,35 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             result, error = start_client_ai(self.body())
             return self.reply({'error': error}, 400) if error else self.reply(result)
 
+        # Оплата без банка (PAYMENT_MODE=test): клиент создаёт платёж, подтверждает только владелец.
+        if path == '/functions/v1/payment-create' and self.command == 'POST':
+            order_id = self.body().get('order_id')
+            order = next((o for o in ORDERS if o['id'] == order_id), None)
+            if not order or order['client_id'] != me()['id']:
+                return self.reply({'error': 'order not found'}, 404)
+            if order['status'] != 'pending_payment':
+                return self.reply({'error': 'order already paid'}, 409)
+            payment = {'id': 'p0000000-0000-4000-8000-%012d' % (len(PAYMENTS) + 1), 'order_id': order['id'],
+                       'provider': 'test', 'amount_amd': order['total_amd'], 'status': 'created', 'receipt_no': None,
+                       'created_at': now_iso(), 'updated_at': now_iso()}
+            PAYMENTS.append(payment)
+            return self.reply({'mode': 'test', 'payment_id': payment['id']})
+        if path == '/functions/v1/payment-test-confirm' and self.command == 'POST':
+            if me()['role'] != 'admin':
+                return self.reply({'error': 'only the owner can confirm test payments'}, 403)
+            data = self.body()
+            payment = next((p for p in PAYMENTS if p['id'] == data.get('payment_id') and p['provider'] == 'test'), None)
+            if not payment:
+                return self.reply({'error': 'payment not found'}, 404)
+            order = next(o for o in ORDERS if o['id'] == payment['order_id'])
+            if data.get('success'):
+                payment.update(status='succeeded', updated_at=now_iso(),
+                               receipt_no=max([p['receipt_no'] or 0 for p in PAYMENTS]) + 1)
+                if order['status'] == 'pending_payment':
+                    order.update(status='paid', paid_at=now_iso())
+            else:
+                payment.update(status='failed', updated_at=now_iso())
+            return self.reply({'ok': True})
         if path == '/functions/v1/ai-assistant' and self.command == 'POST':
             # Настоящего AI в просмотре нет — показываем, как выглядит ответ помощника.
             if self.body().get('task_id'):

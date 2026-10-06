@@ -1242,4 +1242,17 @@ for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created'
   for (const role of ['anon', 'authenticated']) if (await canRun(role, fn)) internalOpen.push(`${fn}:${role}`);
 check('internal helpers are not callable by users: ' + internalOpen.join(), internalOpen.length === 0);
 
+// Тестовая оплата подтверждается только владельцем: payment-test-confirm спрашивает у базы is_admin().
+const adminAnswers = {};
+for (const [name, id] of [['client', CLIENT], ['manager', MANAGER], ['designer', DESIGNER], ['employee', EMPLOYEE], ['owner', ADMIN]])
+  adminAnswers[name] = (await as(id, 'select is_admin() v')).rows[0].v;
+check('is_admin is true only for the owner: ' + JSON.stringify(adminAnswers),
+  adminAnswers.owner === true && ['client', 'manager', 'designer', 'employee'].every(n => adminAnswers[n] === false));
+const testOrder = (await as(CLIENT, `select create_order($1, '[{"service_id":"post","platform_id":"instagram","quantity":1}]'::jsonb, 'one_time', 'team') as id`, [bizId])).rows[0].id;
+const testPay = (await as(null, `insert into payments (order_id, provider, amount_amd) values ($1, 'test', 8000) returning id`, [testOrder])).rows[0].id;
+check('owner sees the pending test payment of a client order',
+  (await as(ADMIN, `select id from payments where order_id = $1 and provider = 'test' and status = 'created'`, [testOrder])).rows.length === 1);
+await fails('client cannot confirm a test payment by itself', () => as(CLIENT, `select mark_payment_succeeded($1, 'x', '{}')`, [testPay]));
+await fails('manager cannot confirm a test payment directly either', () => as(MANAGER, `select mark_payment_succeeded($1, 'x', '{}')`, [testPay]));
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

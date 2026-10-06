@@ -700,6 +700,9 @@ check('employee sees own team tasks only, cannot create',
 await teamWorker.goto(teamTaskUrl, { waitUntil: 'networkidle0' });
 await (await firstVisible(teamWorker, '::-p-text(Взять в работу)')).click();
 await waitText(teamWorker, 'Комментарий к результату');
+// Экран перечитывает задачу и пересоздаёт панель — вводим текст, когда она пересоздалась
+// (ждать «тишины в сети» нельзя: приложение регулярно опрашивает сервер).
+await new Promise((r) => setTimeout(r, 1500));
 await (await fieldByLabel(teamWorker, 'Комментарий к результату')).type('Сделал 10 кадров');
 await (await firstVisible(teamWorker, '::-p-text(Отправить на проверку)')).click();
 check('employee submits the result', await waitText(teamWorker, 'На проверке'));
@@ -760,6 +763,28 @@ check('agents workload shows each agent with weekly work',
   await waitText(lead, 'Лилит · Дизайнер') && (await text(lead)).includes('за неделю: 1') &&
   (await text(lead)).includes('Ани · SMM') && !(await text(lead)).includes('из них задач команды'));
 await lead.screenshot({ path: `${SCREENS}dashboard-agents.png`, fullPage: true });
+
+// 7з. Тестовая оплата (банк не подключён): клиент «платит» — подтверждает только владелец.
+const newOrderId = await (await fetch(`${BASE}/rest/v1/rpc/create_order`, {
+  method: 'POST',
+  headers: { Authorization: 'Bearer demo:client@demo.am', 'Content-Type': 'application/json' },
+  body: JSON.stringify({ p_business_id: 'b0000000-0000-4000-8000-000000000001', p_billing: 'one_time', p_publishing: 'team',
+    p_items: [{ service_id: 'post', platform_id: 'instagram', quantity: 1 }] }),
+})).json();
+await outsider.goto(`${BASE}/orders/${newOrderId}`, { waitUntil: 'networkidle0' });
+await (await firstVisible(outsider, '::-p-text(Банковская карта (ArCa))')).click();
+check('client cannot confirm a test payment, waits for the owner',
+  await waitText(outsider, 'Владелец агентства подтвердит оплату') && !(await text(outsider)).includes('Отметить оплаченным'));
+const confirmAsClient = await fetch(`${BASE}/functions/v1/payment-test-confirm`, {
+  method: 'POST', headers: { Authorization: 'Bearer demo:client@demo.am', 'Content-Type': 'application/json' },
+  body: JSON.stringify({ payment_id: 'any', success: true }) });
+check('server refuses test payment confirmation from a client', confirmAsClient.status === 403);
+const ownerView = await openAs('admin@demo.am');
+await ownerView.goto(`${BASE}/orders/${newOrderId}`, { waitUntil: 'networkidle0' });
+await (await firstVisible(ownerView, '::-p-text(Отметить оплаченным (тест))')).click();
+check('owner confirms the test payment', await waitText(ownerView, 'Оплата получена'));
+await outsider.reload({ waitUntil: 'networkidle0' });
+check('client sees the order paid', await waitText(outsider, 'Оплата получена'));
 
 // 8. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);

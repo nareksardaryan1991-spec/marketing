@@ -36,7 +36,7 @@ export default function OrderScreen() {
   const [testPaymentId, setTestPaymentId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [orderRes, itemsRes, tasksRes, paidRes] = await Promise.all([
+    const [orderRes, itemsRes, tasksRes, paidRes, testRes] = await Promise.all([
       supabase.from('orders').select('*, packages(name)').eq('id', id).single<OrderRow>(),
       supabase.from('order_items').select('*, services(name)').eq('order_id', id),
       supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('order_id', id),
@@ -47,8 +47,18 @@ export default function OrderScreen() {
         .eq('status', 'succeeded')
         .order('receipt_no')
         .limit(1),
+      // Тестовая оплата, которую ещё не подтвердил владелец (клиент видит свою, владелец — все).
+      supabase
+        .from('payments')
+        .select('id')
+        .eq('order_id', id)
+        .eq('provider', 'test')
+        .eq('status', 'created')
+        .order('created_at', { ascending: false })
+        .limit(1),
     ]);
     setReceiptId(paidRes.data?.[0]?.id ?? null);
+    setTestPaymentId(testRes.data?.[0]?.id ?? null);
     setError(orderRes.error?.message ?? itemsRes.error?.message ?? null);
     setOrder(orderRes.data ?? null);
     setItems((itemsRes.data as ItemWithService[] | null) ?? []);
@@ -73,8 +83,8 @@ export default function OrderScreen() {
     setError(null);
     setPaying(provider);
     try {
-      const result = await startPayment(id, provider, language);
-      if (result) setTestPaymentId(result.testPaymentId);
+      // В тестовом режиме платёж ждёт подтверждения владельца — load() его подхватит.
+      await startPayment(id, provider, language);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -111,6 +121,8 @@ export default function OrderScreen() {
   }
 
   const isOwner = profile?.id === order.client_id;
+  // Тестовую оплату подтверждает только владелец агентства (так же проверяет сервер).
+  const isAdmin = profile?.role === 'admin';
   const canChat = isOwner || isTeamRole(profile?.role);
 
   return (
@@ -212,16 +224,22 @@ export default function OrderScreen() {
         </>
       )}
 
-      {testPaymentId && (
+      {pending && testPaymentId && (
         <Card>
           <Text style={styles.cardTitle}>{t('order.testPaymentTitle')}</Text>
-          <Text style={styles.muted}>{t('order.testPaymentText')}</Text>
-          <Button title={t('order.testPay')} onPress={() => finishTestPayment(true)} />
-          <Button
-            title={t('order.testCancel')}
-            variant="ghost"
-            onPress={() => finishTestPayment(false)}
-          />
+          {isAdmin ? (
+            <>
+              <Text style={styles.muted}>{t('order.testPaymentOwner')}</Text>
+              <Button title={t('order.testPay')} onPress={() => finishTestPayment(true)} />
+              <Button
+                title={t('order.testCancel')}
+                variant="ghost"
+                onPress={() => finishTestPayment(false)}
+              />
+            </>
+          ) : (
+            <Text style={styles.muted}>{t('order.testPaymentWaiting')}</Text>
+          )}
         </Card>
       )}
 

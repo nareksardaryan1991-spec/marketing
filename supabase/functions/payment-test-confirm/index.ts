@@ -1,4 +1,5 @@
 // Тестовая оплата (только при PAYMENT_MODE=test). Тело: { payment_id, success }
+// Подтверждает только владелец агентства: пока банк не подключён, клиент не может «оплатить» заказ сам.
 import { corsHeaders, json } from '../_shared/http.ts';
 import { paymentMode } from '../_shared/payments.ts';
 import { adminClient, userClient } from '../_shared/supabase.ts';
@@ -10,11 +11,14 @@ Deno.serve(async (req) => {
 
   const auth = await userClient(req);
   if (!auth) return json({ error: 'unauthorized' }, 401);
+  // Роль проверяет база (is_admin) — те же правила, что и везде.
+  const { data: isAdmin } = await auth.client.rpc('is_admin');
+  if (isAdmin !== true) return json({ error: 'only the owner can confirm test payments' }, 403);
 
   const { payment_id, success } = await req.json().catch(() => ({}));
   if (typeof payment_id !== 'string') return json({ error: 'bad request' }, 400);
 
-  // RLS: пользователь видит только платежи по своим заказам.
+  // RLS: владелец видит платежи по всем заказам.
   const { data: payment } = await auth.client
     .from('payments')
     .select('id, provider')
