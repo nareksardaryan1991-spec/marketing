@@ -762,6 +762,16 @@ export const ru = {
     eurRate: '1 € = … ֏',
     rateInvalid: 'Курс должен быть больше нуля',
   },
+  humanCheck: {
+    title: 'Проверено человеком',
+    by: 'Проверено человеком · %{name}',
+  },
+  achievements: {
+    title: 'Ваши успехи',
+    streak: 'Недель подряд',
+    published: 'Вышло публикаций',
+    nextGoal: 'Следующая цель — %{goal} публикаций, осталось %{left}.',
+  },
 };
 
 export type Translations = typeof ru;

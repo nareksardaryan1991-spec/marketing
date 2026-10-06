@@ -96,8 +96,10 @@ create function pg_temp.deliver(p_task uuid, p_caption text, p_sent boolean)
 returns void
 language sql
 as $$
-  insert into public.deliverables (task_id, version, caption, created_by, sent_to_client_at)
-  values (p_task, 1, p_caption, '11111111-0000-4000-8000-000000000002', case when p_sent then now() - interval '1 day' end);
+  -- Отправленные клиенту версии проверил менеджер Нарек («Проверено человеком»).
+  insert into public.deliverables (task_id, version, caption, created_by, sent_to_client_at, reviewed_by, reviewer_name)
+  values (p_task, 1, p_caption, '11111111-0000-4000-8000-000000000002', case when p_sent then now() - interval '1 day' end,
+          case when p_sent then '11111111-0000-4000-8000-000000000001'::uuid end, case when p_sent then 'Нарек' end);
 $$;
 
 -- Пост №1 — опубликован

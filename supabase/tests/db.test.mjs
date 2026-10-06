@@ -163,6 +163,10 @@ const versions = (await as(CLIENT, 'select version from deliverables where task_
 check('client sees only the version sent to them, task in client_review',
   JSON.stringify(versions) === '[2]' && (await as(CLIENT, 'select status from tasks where id=$1', [task])).rows[0].status === 'client_review');
 check('client sees file of the sent version', (await as(CLIENT, `select * from storage.objects`)).rows.length === 1);
+const checkedBy = (await as(CLIENT, 'select reviewed_by, reviewer_name from deliverables where task_id=$1', [task])).rows[0];
+check('sent version is marked as checked by a human, with the manager name',
+  checkedBy.reviewed_by === MANAGER && checkedBy.reviewer_name === 'Boss');
+await fails('nobody can fake the human check', () => as(CLIENT, `update deliverables set reviewer_name = 'Я' where task_id = $1 returning id`, [task]).then(r => { if (!r.rows.length) throw new Error('no rows'); }));
 check('team still sees all versions', (await as(DESIGNER, 'select version from deliverables where task_id=$1', [task])).rows.length === 2);
 check('client cannot read internal notes of a sent version',
   (await as(CLIENT, 'select * from deliverable_notes')).rows.length === 0 &&

@@ -168,6 +168,9 @@ export type Deliverable = {
   created_at: string;
   // Какой AI-агент сделал версию (null — человек).
   agent?: string | null;
+  // Когда ушла клиенту и кто из менеджеров её проверил (миграции 0009, 0025).
+  sent_to_client_at?: string | null;
+  reviewer_name?: string | null;
 };
 
 export type TaskComment = {

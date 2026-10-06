@@ -3,6 +3,7 @@ import { Pressable } from 'react-native';
 
 import { AssistantCard } from '@/components/AssistantCard';
 import { BusinessCard } from '@/components/BusinessCard';
+import { AchievementsCard } from '@/components/client/AchievementsCard';
 import { IdeasCard } from '@/components/client/IdeasCard';
 import { TeamCard } from '@/components/client/TeamCard';
 import { WelcomeKitCard } from '@/components/client/WelcomeKitCard';
@@ -48,6 +49,7 @@ function ClientHome({ business }: { business: Business }) {
       <ReviewInbox />
       <TeamCard />
       <IdeasCard />
+      <AchievementsCard />
       <BusinessCard business={business} />
       <Button title={t('order.newOrder')} onPress={() => router.push('/new-order')} />
     </>

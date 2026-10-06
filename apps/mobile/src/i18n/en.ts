@@ -764,4 +764,14 @@ export const en: Translations = {
     eurRate: '1 € = … ֏',
     rateInvalid: 'The rate must be greater than zero',
   },
+  humanCheck: {
+    title: 'Checked by a human',
+    by: 'Checked by a human · %{name}',
+  },
+  achievements: {
+    title: 'Your progress',
+    streak: 'Weeks in a row',
+    published: 'Posts published',
+    nextGoal: 'Next goal: %{goal} posts — %{left} to go.',
+  },
 };

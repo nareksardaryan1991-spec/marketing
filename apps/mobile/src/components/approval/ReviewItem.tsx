@@ -7,6 +7,7 @@ import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { Deliverable, Task } from '@/lib/types';
 
+import { HumanCheckBadge } from '../HumanCheckBadge';
 import { colors } from '../theme';
 import { Button, Card, ErrorText, Field } from '../ui';
 import type { NumberedMark } from './MarkDots';
@@ -82,6 +83,7 @@ export function ReviewItem({
           <Text style={styles.muted}>{t('approvals.version', { version: latest.version })}</Text>
         ) : null}
       </View>
+      {latest?.sent_to_client_at ? <HumanCheckBadge name={latest.reviewer_name} /> : null}
       {deadline ? (
         <Text style={styles.deadline}>
           {deadline.daysLeft <= 0

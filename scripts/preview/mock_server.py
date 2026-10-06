@@ -213,6 +213,8 @@ def task(n, platform, svc, num, status, assignee=None, publish=None, due=None, b
             'id': 'v%d' % n, 'task_id': tid, 'version': 1, 'caption': caption, 'files': files, 'note': None,
             'created_by': DESIGNER, 'created_at': day(-1),
             'sent_to_client_at': day(-1) if status in ('client_review', 'approved', 'published') else None,
+            # Проверил менеджер Нарек — значок «Проверено человеком».
+            'reviewer_name': 'Нарек' if status in ('client_review', 'approved', 'published') else None,
         })
     return {
         'id': tid, 'order_id': ORDER, 'business_id': BIZ, 'service_id': svc, 'platform_id': platform,

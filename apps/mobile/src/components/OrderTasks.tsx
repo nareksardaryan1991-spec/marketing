@@ -8,6 +8,7 @@ import { taskTitle } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
 import type { Deliverable, Localized, PublishingMode, Task } from '@/lib/types';
 
+import { HumanCheckBadge } from './HumanCheckBadge';
 import { ReviewInbox } from './ReviewInbox';
 import { FileList } from './task/FileList';
 import { PublishPanel } from './task/PublishPanel';
@@ -65,6 +66,7 @@ export function OrderTasks({
               <Text style={styles.name}>{title(task)}</Text>
               <TaskStatusBadge status={task.status} />
             </View>
+            {latest?.sent_to_client_at ? <HumanCheckBadge name={latest.reviewer_name} /> : null}
             {latest?.caption ? (
               <Text selectable style={styles.caption}>
                 {latest.caption}
@@ -85,6 +87,9 @@ export function OrderTasks({
                 <Text style={styles.text}>{title(task)}</Text>
                 <TaskStatusBadge status={task.status} />
               </View>
+              {isClient && latestOf(task)?.sent_to_client_at ? (
+                <HumanCheckBadge name={latestOf(task).reviewer_name} />
+              ) : null}
               {isClient && task.published_url ? (
                 <Pressable onPress={() => WebBrowser.openBrowserAsync(task.published_url!)}>
                   <Text style={styles.link} numberOfLines={1}>

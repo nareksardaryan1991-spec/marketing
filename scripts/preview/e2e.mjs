@@ -456,6 +456,8 @@ check('home shows how many materials wait', await waitText(reviewer, 'Ждут �
 await reviewer.locator('::-p-text(Ждут вашего согласования)').click();
 check('approvals screen: approve all and auto-approval deadline',
   await waitText(reviewer, 'Одобрить всё (3)') && (await text(reviewer)).includes('Одобрится автоматически'));
+check('every material shows it was checked by a human, with the manager name',
+  (await text(reviewer)).split('Проверено человеком · Нарек').length - 1 === 3);
 check('previews show the material images', await reviewer.waitForFunction(
   () => [...document.images].filter((i) => i.src.includes('deliverables') && i.naturalWidth > 0).length >= 3,
   { timeout: 8000 }).then(() => true, () => false));
@@ -502,6 +504,9 @@ check('client has a bottom menu: home, orders, approvals, chats, profile',
   !clientTabs.some((x) => x.includes('Доска') || x.includes('Агенты')), JSON.stringify(clientTabs));
 check('client does not see the employee assistant', !(await text(clientView)).includes('Мой день'));
 check('client does not see AI agents', !(await text(clientView)).includes('AI-агенты'));
+check('client sees calm achievements: weeks in a row and published posts',
+  await waitText(clientView, 'Ваши успехи') && (await text(clientView)).includes('Вышло публикаций') &&
+  (await text(clientView)).includes('Следующая цель'));
 
 // Профиль бизнеса («мозг» агентов): одна карточка на главной ведёт в профиль; бренд — логотип и цвета.
 check('business card shows how full the profile is', (await text(clientView)).includes('Профиль заполнен на'));

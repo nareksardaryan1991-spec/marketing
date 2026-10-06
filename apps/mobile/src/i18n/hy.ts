@@ -764,4 +764,14 @@ export const hy: Translations = {
     eurRate: '1 € = … ֏',
     rateInvalid: 'Փոխարժեքը պետք է զրոյից մեծ լինի',
   },
+  humanCheck: {
+    title: 'Ստուգված է մարդու կողմից',
+    by: 'Ստուգված է մարդու կողմից · %{name}',
+  },
+  achievements: {
+    title: 'Ձեր հաջողությունները',
+    streak: 'Շաբաթ անընդմեջ',
+    published: 'Գրառումներ',
+    nextGoal: 'Հաջորդ նպատակը՝ %{goal} գրառում, մնաց %{left}։',
+  },
 };
