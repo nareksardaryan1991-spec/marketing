@@ -1,9 +1,10 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ProfileGrid, type GridItem } from '@/components/approval/ProfileGrid';
 import { ReviewItem, type ReviewTask } from '@/components/approval/ReviewItem';
+import { EmptyState } from '@/components/EmptyState';
 import { Screen } from '@/components/Screen';
 import { colors } from '@/components/theme';
 import { Button, Card, ErrorText } from '@/components/ui';
@@ -139,7 +140,12 @@ export default function ApprovalsScreen() {
         </Card>
       ) : waiting.length === 0 ? (
         <Card>
-          <Text style={styles.empty}>{t('approvals.empty')}</Text>
+          <EmptyState
+            icon="✅"
+            text={t('approvals.emptyHint')}
+            action={t('approvals.toHome')}
+            onAction={() => router.navigate('/')}
+          />
         </Card>
       ) : (
         <>

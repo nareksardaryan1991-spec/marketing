@@ -55,6 +55,7 @@ export default function AppLayout() {
       <Stack.Screen name="calendar" options={{ title: t('calendar.title') }} />
       <Stack.Screen name="social" options={{ title: t('social.title') }} />
       <Stack.Screen name="business" options={{ title: t('business.title') }} />
+      <Stack.Screen name="welcome" options={{ title: t('welcome.title') }} />
       <Stack.Screen name="services" options={{ title: t('services.title') }} />
       <Stack.Screen name="reports" options={{ title: t('reports.title') }} />
       <Stack.Screen name="chats/index" options={{ title: t('chats.title') }} />

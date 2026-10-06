@@ -4,6 +4,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AssistantCard } from '@/components/AssistantCard';
 import { BusinessCard } from '@/components/BusinessCard';
+import { IdeasCard } from '@/components/client/IdeasCard';
+import { TeamCard } from '@/components/client/TeamCard';
+import { WelcomeKitCard } from '@/components/client/WelcomeKitCard';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { OrdersList } from '@/components/OrdersList';
 import { ChatsButton } from '@/components/ChatsButton';
@@ -27,10 +30,11 @@ export default function HomeScreen() {
 
   return (
     <Screen>
-      <Pressable accessibilityRole="button" onPress={() => router.push('/profile')}>
-        <ProfileHeader profile={profile} subtitle={t(`roles.${profile.role}`)}>
-          <Text style={styles.link}>{t('profile.title')} →</Text>
-        </ProfileHeader>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('profile.title')}
+        onPress={() => router.push('/profile')}>
+        <ProfileHeader profile={profile} subtitle={t(`roles.${profile.role}`)} />
       </Pressable>
 
       {profile.role !== 'pending' && <ChatsButton />}
@@ -115,12 +119,22 @@ function ClientHome({ business }: { business: Business }) {
   const { t } = useI18n();
   return (
     <>
-      <BusinessCard business={business} />
+      <WelcomeKitCard />
       <ReviewInbox />
+      <TeamCard />
+      <IdeasCard />
+      <BusinessCard business={business} />
       <Button title={t('order.newOrder')} onPress={() => router.push('/new-order')} />
       <Button title={t('reports.title')} variant="ghost" onPress={() => router.push('/reports')} />
       <Button title={t('social.title')} variant="ghost" onPress={() => router.push('/social')} />
-      <OrdersList title={t('order.myOrders')} />
+      <OrdersList
+        title={t('order.myOrders')}
+        empty={{
+          text: t('home.ordersEmpty'),
+          action: t('order.newOrder'),
+          onAction: () => router.push('/new-order'),
+        }}
+      />
     </>
   );
 }
@@ -162,7 +176,6 @@ function ClientsList() {
 }
 
 const styles = StyleSheet.create({
-  link: { fontSize: 15, fontWeight: '600', color: colors.primary, marginTop: 8 },
   cardTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
   muted: { fontSize: 15, color: colors.muted },
   clientRow: {

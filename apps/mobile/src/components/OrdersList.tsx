@@ -7,12 +7,20 @@ import { formatAmd, formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { Order } from '@/lib/types';
 
+import { EmptyState } from './EmptyState';
 import { StatusBadge } from './StatusBadge';
 import { colors } from './theme';
 import { Card, ErrorText } from './ui';
 
 // RLS сама ограничивает выборку: клиент видит свои заказы, команда — все.
-export function OrdersList({ title }: { title: string }) {
+export function OrdersList({
+  title,
+  empty,
+}: {
+  title: string;
+  // Подсказка с кнопкой вместо «Заказов пока нет».
+  empty?: { text: string; action: string; onAction: () => void };
+}) {
   const { t, language } = useI18n();
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +43,12 @@ export function OrdersList({ title }: { title: string }) {
     <Card>
       <Text style={styles.title}>{title}</Text>
       <ErrorText>{error}</ErrorText>
-      {orders.length === 0 && !error && <Text style={styles.muted}>{t('order.noOrders')}</Text>}
+      {orders.length === 0 && !error &&
+        (empty ? (
+          <EmptyState icon="📦" text={empty.text} action={empty.action} onAction={empty.onAction} />
+        ) : (
+          <Text style={styles.muted}>{t('order.noOrders')}</Text>
+        ))}
       {orders.map((order) => (
         <Link key={order.id} href={`/orders/${order.id}`} asChild>
           <Pressable style={styles.row}>

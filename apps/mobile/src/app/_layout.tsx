@@ -47,8 +47,9 @@ function RootNavigator() {
     );
   }
 
-  // Анкету проходят только клиенты, у которых ещё нет бизнеса.
-  const needsOnboarding = signedIn && profile?.role === 'client' && !business;
+  // Знакомство проходят клиенты, у которых ещё нет бизнеса или знакомство не закончено
+  // (ответы сохраняются в профиль бизнеса после каждого вопроса).
+  const needsOnboarding = signedIn && profile?.role === 'client' && !business?.onboarded_at;
   // Сотрудник без роли ждёт, пока владелец её назначит.
   const pending = signedIn && profile?.role === 'pending';
 

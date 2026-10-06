@@ -1,7 +1,8 @@
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { EmptyState } from '@/components/EmptyState';
 import { Screen } from '@/components/Screen';
 import { colors } from '@/components/theme';
 import { Card, ErrorText } from '@/components/ui';
@@ -35,7 +36,12 @@ export default function ReceiptsScreen() {
       <ErrorText>{error}</ErrorText>
       {payments?.length === 0 && (
         <Card>
-          <Text style={styles.muted}>{t('receipts.empty')}</Text>
+          <EmptyState
+            icon="🧾"
+            text={t('receipts.emptyHint')}
+            action={t('order.newOrder')}
+            onAction={() => router.push('/new-order')}
+          />
         </Card>
       )}
       {payments?.map((p) => (

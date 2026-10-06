@@ -278,6 +278,55 @@ await signup.screenshot({ path: `${SCREENS}signup.png`, fullPage: true });
 await signup.locator('::-p-text(Зарегистрироваться)').click();
 check('staff signup lands on waiting screen', await waitText(signup, 'назначит вам роль'));
 
+// 3а. Новый клиент: знакомство-разговор с агентами (по вопросу на экран), подарок после знакомства,
+// «Ваша команда» и идеи задач от агентов.
+const fresh = await openAs(null);
+await fresh.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });
+const freshInputs = await fresh.$$('input');
+await freshInputs[0].type('Нарине Акопян');
+await freshInputs[1].type(`pizza${Date.now() % 100000}@demo.am`);
+await freshInputs[2].type('secret123');
+await fresh.locator('::-p-text(Зарегистрироваться)').click();
+check('client signup starts a conversation with Ani, one question per screen',
+  await waitText(fresh, 'Я Ани') && (await text(fresh)).includes('Вопрос 1 из 10'));
+await fresh.screenshot({ path: `${SCREENS}meet-question.png` });
+await fresh.locator('::-p-text(Далее)').click();
+check('the business name is required', await waitText(fresh, 'Заполните'));
+await fresh.type('textarea, input', 'Pizza Napoli');
+await fresh.locator('::-p-text(Далее)').click();
+await waitText(fresh, 'Чем вы занимаетесь');
+await fresh.locator('::-p-text(Ресторан)').click();
+await fresh.locator('::-p-text(Далее)').click();
+check('next agent asks the next question', await waitText(fresh, 'Я Арсен') && (await text(fresh)).includes('Вопрос 3 из 10'));
+await fresh.locator('::-p-text(Ереван)').click();
+await fresh.locator('::-p-text(Далее)').click();
+for (let i = 4; i <= 9; i++) {
+  await waitText(fresh, `Вопрос ${i} из 10`);
+  await fresh.locator('::-p-text(Пропустить)').click();
+}
+await waitText(fresh, 'Вопрос 10 из 10');
+check('scriptwriter Aram asks for example posts', (await text(fresh)).includes('Я Арам'));
+await fresh.locator('::-p-text(Пропустить и закончить)').click();
+check('after the conversation the client gets a gift from the team', await waitText(fresh, 'Подарок от команды', 15000));
+check('gift is shown right away, marked as an unchecked AI draft',
+  await waitText(fresh, 'Черновик AI, менеджер ещё не проверял', 15000));
+await fresh.locator('::-p-text(Открыть)').click();
+check('gift has 3 posts and a weekly content plan',
+  await waitText(fresh, 'Знакомьтесь: наш бариста') && (await text(fresh)).includes('Контент-план на неделю') && (await text(fresh)).includes('Воскресенье'));
+await fresh.screenshot({ path: `${SCREENS}client-gift.png`, fullPage: true });
+await fresh.goto(BASE, { waitUntil: 'networkidle0' });
+check('«Your team» shows the agents with honest statuses',
+  await waitText(fresh, 'Ваша команда') && (await text(fresh)).includes('Пока без задач') && (await text(fresh)).includes('Лилит'));
+check('no «Личный кабинет» link inside the cabinet', !(await text(fresh)).includes('Личный кабинет'));
+check('empty orders show a hint with a button', (await text(fresh)).includes('Здесь появятся ваши заказы'));
+check('agents suggest ideas for the week', await waitText(fresh, 'Пост про осеннее меню', 15000));
+await fresh.screenshot({ path: `${SCREENS}client-home-new.png`, fullPage: true });
+await (await fresh.$$('::-p-text(Не сейчас)'))[1].click();
+check('«Not now» hides the idea', await fresh.waitForFunction(() => !document.body.innerText.includes('Рилс: латте-арт'), { timeout: 5000 }).then(() => true, () => false));
+await fresh.locator('::-p-text(Принять)').click();
+check('accepting an idea creates an order waiting for payment',
+  await waitText(fresh, 'Ждёт оплаты') && fresh.url().includes('/orders/'));
+
 // 4. Клиент выбирает площадки и видит отдельные карточки с ценами.
 const client = await openAs('client@demo.am');
 await client.goto(`${BASE}/new-order`, { waitUntil: 'networkidle0' });
@@ -313,7 +362,7 @@ check('notification tap opens the order chat',
 // 6. Личный кабинет: клиент меняет имя, «о себе», цвет и фото — на главном видно сразу.
 const PHOTO = new URL('../../apps/mobile/assets/icon.png', import.meta.url).pathname;
 const cabinet = await openAs('client@demo.am');
-await cabinet.locator('::-p-text(Личный кабинет →)').click();
+await cabinet.locator('[aria-label="Личный кабинет"]').click();
 check('home header opens the cabinet', await waitText(cabinet, 'Цвет обложки'));
 const nameInput = await cabinet.waitForSelector('input[value="Анна Петросян"]');
 await nameInput.click({ count: 3 });
@@ -388,7 +437,7 @@ await reviewer.locator('::-p-text(Отправить правки)').click();
 check('changes with a pin sent, two materials left', await waitText(reviewer, 'Одобрить всё (2)'));
 await reviewer.locator('::-p-text(Одобрить всё (2))').click();
 await reviewer.locator('::-p-text(Точно одобрить все 2?)').click();
-check('approve all leaves nothing waiting', await waitText(reviewer, 'ничего не ждёт вашего решения'));
+check('approve all leaves nothing waiting, with a hint and a button', await waitText(reviewer, 'Сейчас нечего согласовывать') && (await text(reviewer)).includes('На главную'));
 await reviewer.locator('::-p-text(Сетка профиля)').click();
 check('profile grid shows approved upcoming and published posts',
   await waitText(reviewer, 'одобрено') && (await reviewer.$$('img[src*="deliverables"]')).length >= 2);

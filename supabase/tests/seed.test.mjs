@@ -38,6 +38,7 @@ const tasks = await q(`select platform_id || '/' || service_id || number as t, s
 console.log('   tasks:', tasks.map(t => `${t.t}=${t.status}`).join(' '));
 check('7 tasks in varied states', tasks.length === 7 && new Set(tasks.map(t => t.status)).size === 7);
 check('order in progress, paid', (await q(`select status, paid_at from public.orders`))[0].status === 'in_progress');
+check('demo business has finished onboarding and has a brand', (await q(`select onboarded_at, brand_colors from public.businesses`))[0].onboarded_at !== null);
 check('client sees only sent deliverables (2 of 4 sent + published)', (await q(`select count(*)::int n from public.deliverables where sent_to_client_at is not null`))[0].n === 3);
 check('chat messages with author names', (await q(`select author_name from public.messages order by created_at`)).map(r => r.author_name).join('|') === 'Анна Петросян|Нарек');
 check('team chat seeded (2 general + 2 direct)', (await q('select count(*)::int n from public.team_messages'))[0].n === 4);

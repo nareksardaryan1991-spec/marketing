@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/Avatar';
+import { EmptyState } from '@/components/EmptyState';
 import { ChatRoom } from '@/components/chat/ChatRoom';
 import { ChatRow, chatTitle } from '@/components/chat/ChatRow';
 import { chatColors } from '@/components/chat/chatTheme';
@@ -111,7 +112,17 @@ export default function ChatsScreen() {
       </View>
       {!!error && <Text style={styles.error}>{error}</Text>}
       <ScrollView>
-        {shown.length === 0 && <Text style={styles.empty}>{t('chats.empty')}</Text>}
+        {shown.length === 0 &&
+          (isClient && !query ? (
+            <EmptyState
+              icon="💬"
+              text={t('chats.emptyClient')}
+              action={t('order.newOrder')}
+              onAction={() => router.push('/new-order')}
+            />
+          ) : (
+            <Text style={styles.empty}>{t('chats.empty')}</Text>
+          ))}
         {shown.map((item) => (
           <ChatRow
             key={`${item.chat}:${item.id}`}

@@ -36,6 +36,12 @@ def day(n, h=10):
     return iso((NOW + timedelta(days=n)).replace(hour=h, minute=0, second=0, microsecond=0))
 
 
+# Сообщения «сегодня» — относительно текущего часа: иначе ранним утром (до 10:00 UTC) они
+# оказывались в будущем и чат никогда не считался прочитанным.
+def hours_ago(h):
+    return iso((NOW - timedelta(hours=h)).replace(second=0, microsecond=0))
+
+
 def now_iso():
     return iso(datetime.now(timezone.utc))
 
@@ -111,7 +117,8 @@ BUSINESS = {
     'goals': 'Больше гостей по утрам, рост подписчиков', 'competitors': 'Coffeeshop Company',
     'instagram_url': 'https://instagram.com/cafe_aroma', 'facebook_url': None, 'tiktok_url': None,
     'website_url': None, 'example_posts': 'Осень в каждой чашке 🍂 Тыквенный латте вернулся — тёплый, пряный, как вы любили. Ждём вас утром на Абовяна 12! #CafeAroma #Ереван',
-    'brand_colors': ['#7A4B2A', '#F2C14E'], 'logo_path': None, 'created_at': day(-40), 'updated_at': day(-2),
+    'brand_colors': ['#7A4B2A', '#F2C14E'], 'logo_path': None, 'onboarded_at': day(-40),
+    'created_at': day(-40), 'updated_at': day(-2),
 }
 
 
@@ -261,13 +268,13 @@ CONVERSATIONS = {TEAM_ID: {'kind': 'team', 'members': None},
                  DIRECT_ID: {'kind': 'direct', 'members': {MANAGER, DESIGNER}}}
 TEAM_MESSAGES = [
     {'id': 'tm1', 'conversation_id': TEAM_ID, 'author_id': MANAGER, 'author_name': 'Нарек',
-     'body': 'Всем доброе утро! Сегодня в 11:00 короткая планёрка по Cafe Aroma.', 'created_at': day(0, 5)},
+     'body': 'Всем доброе утро! Сегодня в 11:00 короткая планёрка по Cafe Aroma.', 'created_at': hours_ago(5)},
     {'id': 'tm2', 'conversation_id': TEAM_ID, 'author_id': DESIGNER, 'author_name': 'Ани Саргсян',
-     'body': 'Буду. Пост №3 уже на проверке 👍', 'created_at': day(0, 6)},
+     'body': 'Буду. Пост №3 уже на проверке 👍', 'created_at': hours_ago(4)},
     {'id': 'tm3', 'conversation_id': DIRECT_ID, 'author_id': MANAGER, 'author_name': 'Нарек',
-     'body': 'Ани, для поста №4 возьми фото с новой витрины.', 'created_at': day(0, 7)},
+     'body': 'Ани, для поста №4 возьми фото с новой витрины.', 'created_at': hours_ago(3)},
     {'id': 'tm4', 'conversation_id': DIRECT_ID, 'author_id': DESIGNER, 'author_name': 'Ани Саргсян',
-     'body': 'Хорошо, сделаю до вечера.', 'created_at': day(0, 8)},
+     'body': 'Хорошо, сделаю до вечера.', 'created_at': hours_ago(2)},
 ]
 READ_AT = {}
 
@@ -288,7 +295,7 @@ REACTIONS += [
     {'message_id': 'm2', 'chat': 'order', 'chat_id': ORDER, 'user_id': CLIENT, 'user_name': 'Анна Петросян', 'emoji': '❤️'},
 ]
 PINNED[TEAM_ID] = 'tm1'
-PROFILES['designer@demo.am']['last_seen_at'] = day(0, 7)
+PROFILES['designer@demo.am']['last_seen_at'] = hours_ago(3)
 
 
 OPEN_STATUSES = ('new', 'assigned', 'in_progress', 'internal_review', 'changes_requested')
@@ -596,6 +603,109 @@ AGENT_FILES = {}
 AGENT_WORK_SECONDS = 2
 
 
+# ---------- Кабинет клиента: подарок после знакомства и идеи задач (демо: AI нет) ----------
+WELCOME_KITS = []
+IDEA_BATCHES = []
+TASK_IDEAS = []
+WELCOME_DEMO = {
+    'posts': [
+        {'title': 'Тыквенный латте вернулся', 'caption': 'Демо (в просмотре AI не подключён). Осень в каждой чашке 🍂 '
+         'Тыквенный латте снова в меню — заходите утром! [ЦЕНА]\n#CafeAroma #Ереван #осень #кофе',
+         'image_idea': 'Чашка латте крупно на деревянном столе, вокруг осенние листья.', 'best_time': 'Вторник, 8:30'},
+        {'title': 'Утро с круассаном', 'caption': 'Демо. Хорошее утро начинается с тёплого круассана и капучино ☕🥐 '
+         'Ждём вас с 8:00.\n#CafeAroma #завтрак #Ереван', 'image_idea': 'Капучино и круассан у окна, мягкий утренний свет.',
+         'best_time': 'Четверг, 8:00'},
+        {'title': 'Знакомьтесь: наш бариста', 'caption': 'Демо. Каждый день вашу чашку готовит наш бариста — '
+         'приходите познакомиться!\n#CafeAroma #бариста #кофейня', 'image_idea': 'Портрет бариста с питчером за стойкой.',
+         'best_time': 'Суббота, 11:00'},
+    ],
+    'plan': [{'day': d, 'format': f, 'topic': tp} for d, f, tp in [
+        ('monday', 'post', 'Тыквенный латте вернулся'), ('tuesday', 'story', 'Опрос: какой напиток осени лучший?'),
+        ('wednesday', 'reel', 'Латте-арт за 15 секунд'), ('thursday', 'post', 'Утро с круассаном'),
+        ('friday', 'story', 'Пятничная скидка [ЦЕНА]'), ('saturday', 'post', 'Знакомьтесь: наш бариста'),
+        ('sunday', 'rest', 'Без публикации')]],
+}
+IDEAS_DEMO = [
+    ('smm', 'Пост про осеннее меню', 'Ани напишет пост о сезонных напитках с призывом зайти утром.', 'post', 'instagram'),
+    ('scriptwriter', 'Рилс: латте-арт за 15 секунд', 'Арам напишет сценарий и план съёмки короткого видео с бариста.', 'reel', 'instagram'),
+    ('targetologist', 'Реклама на студентов рядом', 'Арсен настроит рекламу на студентов в радиусе 2 км от кофейни.', 'ads_management', None),
+]
+
+
+def yerevan_week_start():
+    now = datetime.now(timezone.utc) + timedelta(hours=4)
+    return (now - timedelta(days=now.weekday())).date().isoformat()
+
+
+def own_business(profile):
+    return next((b for b in BUSINESSES if b['owner_id'] == profile['id']), None)
+
+
+def visible_business_ids():
+    profile = me()
+    return {b['id'] for b in BUSINESSES if b['owner_id'] == profile['id'] or is_team(profile['role'])}
+
+
+def start_client_ai(data):
+    """Как функция client-ai: подарок один раз на клиента, идеи — раз в неделю."""
+    profile = me()
+    if profile['role'] != 'client':
+        return None, 'forbidden'
+    business = own_business(profile)
+    if not business:
+        return None, 'business not found'
+    if data.get('mode') == 'welcome':
+        kit = next((k for k in WELCOME_KITS if k['client_id'] == profile['id']), None)
+        if kit and kit['status'] != 'failed':
+            return {'status': kit['status']}, None
+        if kit:
+            WELCOME_KITS.remove(kit)
+        kit = {'business_id': business['id'], 'client_id': profile['id'], 'status': 'running', 'language': 'ru',
+               'result': None, 'error': None, 'created_at': now_iso()}
+        WELCOME_KITS.append(kit)
+        threading.Timer(AGENT_WORK_SECONDS, lambda: kit.update(status='done', result=WELCOME_DEMO)).start()
+        return {'status': 'running'}, None
+    if data.get('mode') != 'ideas':
+        return None, 'bad request'
+    if not business.get('onboarded_at'):
+        return None, 'onboarding not finished'
+    week = yerevan_week_start()
+    if any(b['business_id'] == business['id'] and b['week_start'] == week for b in IDEA_BATCHES):
+        return {'week_start': week, 'started': False}, None
+    batch = {'business_id': business['id'], 'week_start': week, 'status': 'running', 'created_at': now_iso()}
+    IDEA_BATCHES.append(batch)
+
+    def finish():
+        for agent, title, description, service, platform in IDEAS_DEMO:
+            TASK_IDEAS.append({'id': 'd1000000-0000-4000-8000-%012d' % (len(TASK_IDEAS) + 1), 'business_id': business['id'],
+                               'week_start': week, 'agent': agent, 'title': title, 'description': description,
+                               'service_id': service, 'platform_id': platform, 'status': 'proposed', 'order_id': None,
+                               'created_at': now_iso(), 'decided_at': None})
+        batch['status'] = 'done'
+    threading.Timer(AGENT_WORK_SECONDS, finish).start()
+    return {'week_start': week, 'started': True}, None
+
+
+def decide_idea(idea_id, accept):
+    profile = me()
+    idea = next((i for i in TASK_IDEAS if i['id'] == idea_id), None)
+    business = idea and next((b for b in BUSINESSES if b['id'] == idea['business_id']), None)
+    if not idea or not business or business['owner_id'] != profile['id']:
+        return None, 'idea not found'
+    if idea['status'] != 'proposed':
+        return None, 'idea is already decided'
+    order_id = None
+    if accept:
+        order_id, error = create_order({'p_business_id': business['id'], 'p_billing': 'one_time', 'p_publishing': 'team',
+                                        'p_ad_budget_amd': 0, 'p_notes': idea['title'] + '\n' + idea['description'],
+                                        'p_items': [{'service_id': idea['service_id'], 'platform_id': idea['platform_id'],
+                                                     'quantity': 1}]})
+        if not order_id:
+            return None, error
+    idea.update(status='accepted' if accept else 'dismissed', order_id=order_id, decided_at=now_iso())
+    return order_id, None
+
+
 def start_agent(data):
     """Запуск агента — те же проверки, что в Edge Function ai-agent (упрощённо)."""
     profile = me()
@@ -827,6 +937,9 @@ def rows(table, q):
                   for o in ORDERS if o['id'] in ids]
         if eq(q, 'id'):
             result = [o for o in result if o['id'] == eq(q, 'id')]
+        mode, statuses = in_filter(q, 'status')
+        if mode == 'in':
+            result = [o for o in result if o['status'] in statuses]
         return sorted(result, key=lambda o: o['created_at'], reverse=True)
     if table == 'order_items':
         ids = my_order_ids()
@@ -861,6 +974,14 @@ def rows(table, q):
         visible = {t['id'] for t in visible_tasks()}
         return sorted([a for a in APPROVALS if a['task_id'] in visible and (not tid or a['task_id'] == tid)],
                       key=lambda a: a['created_at'], reverse=True)
+    if table == 'welcome_kits':
+        return [k for k in WELCOME_KITS if k['business_id'] in visible_business_ids()]
+    if table == 'idea_batches':
+        week = eq(q, 'week_start')
+        return [b for b in IDEA_BATCHES if b['business_id'] in visible_business_ids() and (not week or b['week_start'] == week)]
+    if table == 'task_ideas':
+        week = eq(q, 'week_start')
+        return [i for i in TASK_IDEAS if i['business_id'] in visible_business_ids() and (not week or i['week_start'] == week)]
     if table == 'agent_runs':
         result = visible_agent_runs()
         for key_ in ('agent', 'task_id', 'created_by'):
@@ -1191,6 +1312,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if fn == 'create_order':
                 order_id, error = create_order(data)
                 return self.reply(order_id) if order_id else self.reply({'message': error}, 400)
+            if fn in ('accept_task_idea', 'dismiss_task_idea'):
+                order_id, error = decide_idea(data.get('p_idea_id'), fn == 'accept_task_idea')
+                return self.reply({'message': error}, 400) if error else self.reply(order_id)
             if fn == 'check_promo':
                 promo, error = valid_promo(data.get('p_code'))
                 return self.reply({'message': error}, 400) if error else self.reply(
@@ -1347,6 +1471,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self.reply({'error': error}, 400) if error else self.reply({'ok': True})
             run_id, error = start_agent(data)
             return self.reply({'error': error}, 400) if error else self.reply({'run_id': run_id})
+
+        if path == '/functions/v1/client-ai' and self.command == 'POST':
+            result, error = start_client_ai(self.body())
+            return self.reply({'error': error}, 400) if error else self.reply(result)
 
         if path == '/functions/v1/ai-assistant' and self.command == 'POST':
             # Настоящего AI в просмотре нет — показываем, как выглядит ответ помощника.

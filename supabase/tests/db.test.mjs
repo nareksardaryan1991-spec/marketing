@@ -962,4 +962,37 @@ check('stranger does not see brand files of another business',
   (await as(CLIENT, `select name from storage.objects where bucket_id = 'brand'`)).rows.length === 2);
 await fails('stranger cannot delete a logo', () => as(OTHER, `delete from storage.objects where bucket_id = 'brand' returning name`).then(r => { if (!r.rows.length) throw new Error('nothing deleted'); }));
 
+// Знакомство и кабинет клиента: подарок после знакомства и идеи задач от агентов.
+check('a new business is not onboarded yet', (await as(CLIENT, 'select onboarded_at from businesses where id = $1', [bizId])).rows[0].onboarded_at === null);
+await as(CLIENT, 'update businesses set onboarded_at = now() where id = $1', [bizId]);
+check('client finishes onboarding', (await as(CLIENT, 'select onboarded_at from businesses where id = $1', [bizId])).rows[0].onboarded_at !== null);
+await as(null, `insert into welcome_kits (business_id, client_id, status, result) values ($1, $2, 'done', '{"posts":[]}')`, [bizId, CLIENT]);
+check('client sees own welcome kit, stranger does not',
+  (await as(CLIENT, 'select * from welcome_kits')).rows.length === 1 && (await as(OTHER, 'select * from welcome_kits')).rows.length === 0);
+await fails('one welcome kit per client', () => as(null, `insert into welcome_kits (business_id, client_id) values ($1, $2)`, [bizId, CLIENT]));
+await fails('client cannot write a welcome kit', () => as(CLIENT, `update welcome_kits set status = 'running' returning business_id`).then(r => { if (!r.rows.length) throw new Error('no rows'); }));
+await as(null, `insert into idea_batches (business_id, week_start, status) values ($1, '2026-10-05', 'done')`, [bizId]);
+await fails('one idea batch per week', () => as(null, `insert into idea_batches (business_id, week_start) values ($1, '2026-10-05')`, [bizId]));
+const ideaIds = (await as(null, `insert into task_ideas (business_id, week_start, agent, title, description, service_id, platform_id) values
+  ($1, '2026-10-05', 'smm', 'Пост про осеннее меню', 'Тыквенный латте', 'post', 'instagram'),
+  ($1, '2026-10-05', 'scriptwriter', 'Рилс с бариста', 'Латте-арт за 15 секунд', 'reel', 'instagram') returning id`, [bizId])).rows.map(r => r.id);
+check('client sees ideas, stranger does not',
+  (await as(CLIENT, 'select * from task_ideas')).rows.length === 2 && (await as(OTHER, 'select * from task_ideas')).rows.length === 0);
+await fails('client cannot insert ideas directly', () => as(CLIENT, `insert into task_ideas (business_id, week_start, agent, title, description, service_id) values ($1, '2026-10-05', 'smm', 'x', 'y', 'post')`, [bizId]));
+await fails('stranger cannot accept an idea', () => as(OTHER, 'select accept_task_idea($1)', [ideaIds[0]]));
+await fails('manager cannot accept for the client', () => as(MANAGER, 'select accept_task_idea($1)', [ideaIds[0]]));
+const ideaOrder = (await as(CLIENT, 'select accept_task_idea($1) as id', [ideaIds[0]])).rows[0].id;
+const ideaOrderRow = (await as(CLIENT, 'select o.status, o.total_amd, o.notes, i.service_id, i.platform_id, i.quantity from orders o join order_items i on i.order_id = o.id where o.id = $1', [ideaOrder])).rows;
+check('accepted idea becomes a one-item order at the catalog price waiting for payment',
+  ideaOrderRow.length === 1 && ideaOrderRow[0].status === 'pending_payment' && ideaOrderRow[0].service_id === 'post' &&
+  ideaOrderRow[0].platform_id === 'instagram' && ideaOrderRow[0].quantity === 1 &&
+  ideaOrderRow[0].total_amd === (await as(null, `select price_amd from platform_services where platform_id = 'instagram' and service_id = 'post'`)).rows[0].price_amd &&
+  ideaOrderRow[0].notes.startsWith('Пост про осеннее меню'));
+check('idea remembers its order', (await as(CLIENT, 'select status, order_id from task_ideas where id = $1', [ideaIds[0]])).rows[0].order_id === ideaOrder);
+await fails('idea cannot be accepted twice', () => as(CLIENT, 'select accept_task_idea($1)', [ideaIds[0]]));
+await fails('stranger cannot dismiss an idea', () => as(OTHER, 'select dismiss_task_idea($1)', [ideaIds[1]]));
+await as(CLIENT, 'select dismiss_task_idea($1)', [ideaIds[1]]);
+check('client dismisses an idea', (await as(CLIENT, 'select status from task_ideas where id = $1', [ideaIds[1]])).rows[0].status === 'dismissed');
+await fails('dismissed idea cannot be accepted', () => as(CLIENT, 'select accept_task_idea($1)', [ideaIds[1]]));
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

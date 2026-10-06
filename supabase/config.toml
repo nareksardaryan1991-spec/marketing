@@ -440,6 +440,9 @@ verify_jwt = false
 [functions.ai-agent]
 verify_jwt = false
 
+[functions.client-ai]
+verify_jwt = false
+
 [functions.notify-dispatch]
 verify_jwt = false
 

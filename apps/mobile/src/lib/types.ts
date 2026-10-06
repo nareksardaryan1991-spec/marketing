@@ -52,6 +52,8 @@ export type Business = {
   example_posts: string | null;
   brand_colors: string[];
   logo_path: string | null;
+  // Знакомство пройдено (миграция 0023); до этого клиент видит только его.
+  onboarded_at: string | null;
   created_at: string;
   updated_at: string;
 };
