@@ -4,6 +4,7 @@ import { Text } from 'react-native';
 
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { authStyles as styles } from '@/components/authStyles';
+import { PublicIntro } from '@/components/PublicIntro';
 import { Screen } from '@/components/Screen';
 import { Button, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
@@ -56,6 +57,7 @@ export default function SignInScreen() {
       <Link href="/sign-up" style={styles.link}>
         {t('auth.noAccount')}
       </Link>
+      <PublicIntro />
     </Screen>
   );
 }

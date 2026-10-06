@@ -774,4 +774,15 @@ export const en: Translations = {
     published: 'Posts published',
     nextGoal: 'Next goal: %{goal} posts — %{left} to go.',
   },
+  intro: {
+    title: 'Instagram, Facebook and TikTok marketing with an AI team',
+    lead: 'Posts, stories, reels and ads for businesses in Armenia. Tell us about your business and the team will prepare 3 example posts and a one-week content plan right away.',
+    how: 'How it works',
+    points: {
+      agents: 'Five AI agents prepare the work: Ani — captions, hashtags and the content plan, Lilit — images, Aram — reel scripts and shoot plans, Arsen — ads and audience, Sona — profile bio and keywords.',
+      check: 'A manager checks every piece before you see it — it carries a “Checked by a human” badge.',
+      approve: 'You approve materials right in the app, like in an Instagram feed, or ask for changes.',
+      packages: 'Monthly packages or one-off orders. Payment by ArCa and Idram.',
+    },
+  },
 };

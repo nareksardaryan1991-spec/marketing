@@ -612,6 +612,26 @@ check('owner manages auto-approval and promo codes',
 check('owner manages monthly packages and exchange rates',
   (await text(owner)).includes('Пакеты на месяц') && (await text(owner)).includes('Курсы валют'));
 
+// 7в. Видимость в поиске и соцсетях: публичная главная — готовый HTML без JavaScript,
+//     нормальные title и описание, Open Graph для превью ссылки.
+const rawHtml = await (await fetch(`${BASE}/`)).text();
+check('page has a real title and description instead of «Marketing»',
+  /<title>Продвижение в Instagram, Facebook и TikTok с AI-командой[^<]*<\/title>/.test(rawHtml) &&
+  /<meta name="description" content="Посты, сторис, рилсы/.test(rawHtml));
+check('Open Graph and Twitter tags for link previews',
+  ['og:title', 'og:description', 'og:image', 'og:url', 'twitter:card'].every((tag) => rawHtml.includes(`"${tag}"`)) &&
+  rawHtml.includes('og-image.jpg'));
+check('public home text is in the HTML itself, without JavaScript',
+  rawHtml.includes('Как это работает') && rawHtml.includes('Проверено человеком') && rawHtml.includes('href="sign-up"') &&
+  rawHtml.includes('lang="hy"') && rawHtml.includes('<html lang="ru"'));
+const ogImage = await fetch(`${BASE}/og-image.jpg`);
+check('link preview image is served', ogImage.ok && (await ogImage.arrayBuffer()).byteLength > 10000);
+const visitor = await openAs(null);
+check('with JavaScript the app replaces the static page and shows the same intro on the sign-in screen',
+  await waitText(visitor, 'Как это работает') && (await text(visitor)).includes('Войти') &&
+  !(await visitor.evaluate(() => !!document.querySelector('.home'))));
+await visitor.screenshot({ path: `${SCREENS}public-home.png`, fullPage: true });
+
 // 8. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);
 await ghost.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });

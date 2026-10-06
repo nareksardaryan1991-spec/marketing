@@ -57,6 +57,10 @@ jobs:
           EXPO_PUBLIC_WEB_PUSH_KEY: ${{ vars.EXPO_PUBLIC_WEB_PUSH_KEY }}
         run: |
           npx expo export --platform web --clear --output-dir dist
+          # Полный адрес сайта для превью ссылки (Open Graph) и canonical — см. public/index.html.
+          OWNER='${{ github.repository_owner }}'
+          SITE_URL="https://${OWNER,,}.github.io/${{ github.event.repository.name }}"
+          sed -i "s#%SITE_URL%#${SITE_URL}#g" dist/index.html
           # Pages не знает про маршруты приложения: любая ссылка вроде /orders/123
           # отдаёт 404.html, а это то же приложение, которое откроет нужный экран.
           cp dist/index.html dist/404.html
