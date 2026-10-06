@@ -32,11 +32,15 @@ let ok = true;
 const check = (l, v) => { console.log(v ? 'PASS' : 'FAIL', l); if (!v) ok = false; };
 const roles = (await q(`select email, role from public.profiles order by email`)).map(r => `${r.email.split('@')[0]}=${r.role}`).join(' ');
 console.log('   users:', roles);
-check('6 demo users incl. admin and pending', roles === 'admin=admin client=client designer=designer freelancer=freelancer manager=manager newbie=pending');
-check('identities created', (await q('select count(*)::int n from auth.identities'))[0].n === 6);
-const tasks = await q(`select platform_id || '/' || service_id || number as t, status from public.tasks order by platform_id, service_id, number`);
+check('7 demo users incl. admin, employee and pending', roles === 'admin=admin client=client designer=designer employee=employee freelancer=freelancer manager=manager newbie=pending');
+check('identities created', (await q('select count(*)::int n from auth.identities'))[0].n === 7);
+const tasks = await q(`select platform_id || '/' || service_id || number as t, status from public.tasks where kind = 'order' order by platform_id, service_id, number`);
 console.log('   tasks:', tasks.map(t => `${t.t}=${t.status}`).join(' '));
 check('7 tasks in varied states', tasks.length === 7 && new Set(tasks.map(t => t.status)).size === 7);
+const team = await q(`select t.title, t.status, p.email from public.tasks t left join public.profiles p on p.id = t.assignee_id where t.kind = 'team' order by t.title`);
+check('3 team tasks: employee works, designer under review, one unassigned',
+  team.map(t => `${t.status}:${t.email ?? '-'}`).join(' ') === 'internal_review:designer@demo.am new:- in_progress:employee@demo.am');
+check('employee has a job title', (await q(`select job_title from public.profiles where email = 'employee@demo.am'`))[0].job_title === 'Фотограф');
 check('order in progress, paid', (await q(`select status, paid_at from public.orders`))[0].status === 'in_progress');
 check('demo business has finished onboarding and has a brand', (await q(`select onboarded_at, brand_colors from public.businesses`))[0].onboarded_at !== null);
 check('client sees only sent deliverables (2 of 4 sent + published)', (await q(`select count(*)::int n from public.deliverables where sent_to_client_at is not null`))[0].n === 3);

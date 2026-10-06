@@ -77,6 +77,7 @@ cat <<TXT
     manager@demo.am     менеджер
     designer@demo.am    дизайнер
     freelancer@demo.am  фрилансер
+    employee@demo.am    сотрудник (фотограф): только свои задачи
     newbie@demo.am      новый сотрудник, ждёт роли
 
   Оплата — тестовая. AI заработает после добавления ANTHROPIC_API_KEY в supabase/functions/.env

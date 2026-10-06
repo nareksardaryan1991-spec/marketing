@@ -1225,4 +1225,21 @@ check('agents workload lists all six agents with running, review and weekly coun
   Number(agentsLoad.designer.to_review) === await sql(`select count(*) n from tasks t where status = 'internal_review' and (select agent from deliverables d where d.task_id = t.id order by version desc limit 1) = 'designer'`));
 check('agent load is not empty in this test run', dash.workload_agents.some(a => Number(a.running) + Number(a.done_week) + Number(a.to_review) > 0));
 
+// Аудит функций: security definer — только с search_path; новые функции задач команды — не для anon,
+// служебные (проверки, триггеры) — вообще не для пользователей.
+const unsafe = (await as(null, `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.prosecdef
+    and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')`)).rows.map(r => r.proname);
+check('every security definer function pins search_path: ' + unsafe.join(), unsafe.length === 0);
+const canRun = async (role, fn) => (await as(null, `select bool_or(has_function_privilege($1, p.oid, 'execute')) v
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = $2`, [role, fn])).rows[0].v;
+const userFns = ['create_team_task', 'update_team_task', 'set_team_task_attachments', 'delete_team_task', 'set_job_title', 'task_order_notes', 'owner_dashboard'];
+const anonOpen = [];
+for (const fn of userFns) if (await canRun('anon', fn)) anonOpen.push(fn);
+check('team task functions are closed to anonymous visitors: ' + anonOpen.join(), anonOpen.length === 0);
+const internalOpen = [];
+for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created', 'task_payload', 'notify_users'])
+  for (const role of ['anon', 'authenticated']) if (await canRun(role, fn)) internalOpen.push(`${fn}:${role}`);
+check('internal helpers are not callable by users: ' + internalOpen.join(), internalOpen.length === 0);
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

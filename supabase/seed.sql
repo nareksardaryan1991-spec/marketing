@@ -6,6 +6,7 @@
 --   manager@demo.am     — менеджер
 --   designer@demo.am    — дизайнер
 --   freelancer@demo.am  — фрилансер
+--   employee@demo.am    — сотрудник (фотограф): только свои задачи
 --   client@demo.am      — клиент, кофейня Cafe Aroma
 --   newbie@demo.am      — новый сотрудник, ждёт роли от владельца
 
@@ -41,12 +42,14 @@ select pg_temp.demo_user('11111111-0000-4000-8000-000000000003', 'freelancer@dem
 select pg_temp.demo_user('11111111-0000-4000-8000-000000000004', 'client@demo.am', 'Анна Петросян');
 select pg_temp.demo_user('11111111-0000-4000-8000-000000000005', 'admin@demo.am', 'Арам Владелец');
 select pg_temp.demo_user('11111111-0000-4000-8000-000000000006', 'newbie@demo.am', 'Лусине Мартиросян');
+select pg_temp.demo_user('11111111-0000-4000-8000-000000000007', 'employee@demo.am', 'Гор Мкртчян');
 
 update public.profiles set role = 'manager' where email = 'manager@demo.am';
 update public.profiles set role = 'designer' where email = 'designer@demo.am';
 update public.profiles set role = 'freelancer' where email = 'freelancer@demo.am';
 update public.profiles set role = 'admin' where email = 'admin@demo.am';
 update public.profiles set role = 'pending' where email = 'newbie@demo.am';
+update public.profiles set role = 'employee', job_title = 'Фотограф' where email = 'employee@demo.am';
 
 -- ---------- Бизнес клиента ----------
 insert into public.businesses (
@@ -174,6 +177,20 @@ insert into public.team_messages (conversation_id, author_id, body, created_at) 
    'Ани, для поста №4 возьми фото с новой витрины.', now() - interval '2 hours'),
   ('55555555-0000-4000-8000-000000000001', '11111111-0000-4000-8000-000000000002',
    'Хорошо, сделаю до вечера.', now() - interval '1 hour');
+
+-- ---------- Задачи команды (поручения людям, клиент их не видит) ----------
+insert into public.tasks (kind, title, brief, priority, status, assignee_id, due_date, business_id, created_by) values
+  ('team', 'Фотосессия десертов для осеннего меню',
+   'Чизкейк, тыквенный пирог и макаруны: 10–15 кадров, светлый фон, вертикаль и квадрат.', 'high', 'in_progress',
+   '11111111-0000-4000-8000-000000000007', current_date + 2, '22222222-0000-4000-8000-000000000001',
+   '11111111-0000-4000-8000-000000000001'),
+  ('team', 'Обновить шаблоны сторис в цветах бренда', 'Три шаблона: анонс, опрос, акция.', 'normal', 'internal_review',
+   '11111111-0000-4000-8000-000000000002', current_date + 4, null, '11111111-0000-4000-8000-000000000005'),
+  ('team', 'Собрать референсы рилсов для кофеен', 'Пять-десять примеров, что сейчас заходит.', 'low', 'new',
+   null, null, null, '11111111-0000-4000-8000-000000000001');
+insert into public.deliverables (task_id, version, caption, created_by)
+select id, 1, 'Три шаблона готовы, исходники в Figma.', '11111111-0000-4000-8000-000000000002'
+from public.tasks where title = 'Обновить шаблоны сторис в цветах бренда';
 
 -- Демо-уведомления не нужны — очищаем очередь, созданную триггерами выше.
 delete from public.notifications;
