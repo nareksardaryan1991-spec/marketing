@@ -10,6 +10,7 @@ import {
   type BusinessForm,
 } from '@/components/BusinessFields';
 import { BrandFields } from '@/components/BrandFields';
+import { NavList, NavRow } from '@/components/NavList';
 import { Screen } from '@/components/Screen';
 import { taskStyles as styles } from '@/components/task/styles';
 import { colors } from '@/components/theme';
@@ -133,11 +134,13 @@ export default function BusinessScreen() {
       {saved && <Text style={{ color: colors.primary }}>{t('business.saved')}</Text>}
       <Button title={t('common.save')} onPress={save} loading={saving} />
       {id && (
-        <Button
-          title={t('reports.title')}
-          variant="ghost"
-          onPress={() => router.push({ pathname: '/reports', params: { business: id } })}
-        />
+        <NavList>
+          <NavRow
+            icon="bar-chart-outline"
+            title={t('reports.title')}
+            href={{ pathname: '/reports', params: { business: id } }}
+          />
+        </NavList>
       )}
     </Screen>
   );

@@ -2,6 +2,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { NavList, NavRow } from '@/components/NavList';
 import { OrderTasks } from '@/components/OrderTasks';
 import { Screen } from '@/components/Screen';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -179,20 +180,13 @@ export default function OrderScreen() {
         <Button title={t('order.repeat')} variant="ghost" onPress={repeat} />
       )}
 
-      {isOwner && receiptId && (
-        <Button
-          title={`🧾 ${t('receipts.receiptButton')}`}
-          variant="ghost"
-          onPress={() => router.push(`/receipts/${receiptId}`)}
-        />
-      )}
-
-      {canChat && (
-        <Button
-          title={t('chat.open')}
-          variant="ghost"
-          onPress={() => router.push(`/orders/${order.id}/chat`)}
-        />
+      {(canChat || (isOwner && receiptId)) && (
+        <NavList>
+          {canChat && <NavRow icon="chatbubbles-outline" title={t('chat.open')} href={`/orders/${order.id}/chat`} />}
+          {isOwner && receiptId && (
+            <NavRow icon="receipt-outline" title={t('receipts.receiptButton')} href={`/receipts/${receiptId}`} />
+          )}
+        </NavList>
       )}
 
       {pending && isOwner && !testPaymentId && (

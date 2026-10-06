@@ -720,4 +720,13 @@ export const en: Translations = {
     accept: 'Accept',
     later: 'Not now',
   },
+  tabs: {
+    home: 'Home',
+    orders: 'Orders',
+    ordersAll: 'All orders and clients',
+    approvals: 'Approve',
+    board: 'Board',
+    agents: 'Agents',
+    profile: 'Profile',
+  },
 };

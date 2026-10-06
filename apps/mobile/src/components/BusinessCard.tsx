@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -52,7 +53,10 @@ export function BusinessCard({ business }: { business: Business }) {
       <Text style={styles.muted}>
         {percent < 100 ? t('home.profileFilled', { percent }) : t('home.profileComplete')}
       </Text>
-      <Text style={styles.link}>{percent < 100 ? t('home.completeProfile') : t('home.openProfile')} →</Text>
+      <View style={styles.linkRow}>
+        <Text style={styles.link}>{percent < 100 ? t('home.completeProfile') : t('home.openProfile')}</Text>
+        <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+      </View>
     </Pressable>
   );
 }
@@ -76,5 +80,6 @@ const styles = StyleSheet.create({
   dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: colors.border },
   bar: { height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
   barFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   link: { fontSize: 15, fontWeight: '600', color: colors.primary },
 });

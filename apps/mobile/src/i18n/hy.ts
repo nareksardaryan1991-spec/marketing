@@ -720,4 +720,13 @@ export const hy: Translations = {
     accept: 'Ընդունել',
     later: 'Ոչ հիմա',
   },
+  tabs: {
+    home: 'Գլխավոր',
+    orders: 'Պատվեր',
+    ordersAll: 'Բոլոր պատվերները և հաճախորդները',
+    approvals: 'Նյութեր',
+    board: 'Տախտակ',
+    agents: 'AI թիմ',
+    profile: 'Պրոֆիլ',
+  },
 };

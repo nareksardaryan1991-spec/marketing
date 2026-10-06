@@ -1,15 +1,17 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChatBackground } from '@/components/chat/ChatBackground';
 import { WALLPAPERS } from '@/components/chat/chatTheme';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { NavList, NavRow } from '@/components/NavList';
 import { ProfileHeader } from '@/components/ProfileHeader';
 import { Screen } from '@/components/Screen';
 import { colors } from '@/components/theme';
 import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { ACCENT_COLORS, pickProfilePhoto, removeProfilePhotos, type ProfilePhoto } from '@/lib/avatars';
+import { isManagerRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
@@ -17,7 +19,7 @@ import { useAuth } from '@/providers/AuthProvider';
 // Личный кабинет: у каждого клиента и сотрудника свой — имя, фото, обложка, цвет, «о себе».
 export default function ProfileScreen() {
   const { t } = useI18n();
-  const { profile, refresh } = useAuth();
+  const { profile, refresh, signOut } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
@@ -107,18 +109,7 @@ export default function ProfileScreen() {
       <ErrorText>{error}</ErrorText>
       {notice && <Text style={styles.notice}>{notice}</Text>}
 
-      <Button
-        title={`🔔 ${t('notify.title')}`}
-        variant="ghost"
-        onPress={() => router.push('/notifications')}
-      />
-      {profile.role === 'client' && (
-        <Button
-          title={`🧾 ${t('receipts.title')}`}
-          variant="ghost"
-          onPress={() => router.push('/receipts')}
-        />
-      )}
+      <ProfileMenu profile={profile} />
 
       <Card>
         <Text style={styles.cardTitle}>{t('profile.photos')}</Text>
@@ -247,7 +238,41 @@ export default function ProfileScreen() {
           loading={busy === 'password'}
         />
       </Card>
+
+      <Card>
+        <Text style={styles.cardTitle}>{t('common.language')}</Text>
+        <LanguageSwitcher />
+      </Card>
+      <Button title={t('common.signOut')} variant="ghost" onPress={signOut} />
     </Screen>
+  );
+}
+
+// Все редкие экраны — здесь, одним списком; набор зависит от роли.
+function ProfileMenu({ profile }: { profile: Profile }) {
+  const { t } = useI18n();
+  if (profile.role === 'client') {
+    return (
+      <NavList>
+        <NavRow icon="storefront-outline" title={t('business.title')} href="/business" />
+        <NavRow icon="receipt-outline" title={t('receipts.title')} href="/receipts" />
+        <NavRow icon="bar-chart-outline" title={t('reports.title')} href="/reports" />
+        <NavRow icon="logo-instagram" title={t('social.title')} href="/social" />
+        <NavRow icon="calendar-outline" title={t('calendar.title')} href="/calendar" />
+        <NavRow icon="notifications-outline" title={t('notify.title')} href="/notifications" />
+      </NavList>
+    );
+  }
+  const manager = isManagerRole(profile.role);
+  return (
+    <NavList>
+      {manager && <NavRow icon="speedometer-outline" title={t('dashboard.title')} href="/dashboard" />}
+      {manager && <NavRow icon="cube-outline" title={t('tabs.ordersAll')} href="/orders" />}
+      {manager && <NavRow icon="people-outline" title={t('team.title')} href="/team" />}
+      {manager && <NavRow icon="pricetags-outline" title={t('services.title')} href="/services" />}
+      <NavRow icon="calendar-outline" title={t('calendar.title')} href="/calendar" />
+      <NavRow icon="notifications-outline" title={t('notify.title')} href="/notifications" />
+    </NavList>
   );
 }
 

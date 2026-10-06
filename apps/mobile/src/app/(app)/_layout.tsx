@@ -44,13 +44,13 @@ export default function AppLayout() {
         headerStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
       }}>
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      {/* Нижнее меню; остальные экраны открываются поверх него. */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="new-order" options={{ title: t('order.newOrder') }} />
       <Stack.Screen name="orders/[id]/index" options={{ title: t('order.order') }} />
       <Stack.Screen name="orders/[id]/chat" options={{ title: t('chat.title') }} />
       <Stack.Screen name="notifications" options={{ title: t('notify.title') }} />
       <Stack.Screen name="tasks/[id]" options={{ title: t('task.task') }} />
-      <Stack.Screen name="profile" options={{ title: t('profile.title') }} />
       <Stack.Screen name="team" options={{ title: t('team.title') }} />
       <Stack.Screen name="calendar" options={{ title: t('calendar.title') }} />
       <Stack.Screen name="social" options={{ title: t('social.title') }} />
@@ -58,15 +58,11 @@ export default function AppLayout() {
       <Stack.Screen name="welcome" options={{ title: t('welcome.title') }} />
       <Stack.Screen name="services" options={{ title: t('services.title') }} />
       <Stack.Screen name="reports" options={{ title: t('reports.title') }} />
-      <Stack.Screen name="chats/index" options={{ title: t('chats.title') }} />
-      <Stack.Screen name="board" options={{ title: t('board.title') }} />
-      <Stack.Screen name="approvals" options={{ title: t('approvals.title') }} />
       <Stack.Screen name="receipts/index" options={{ title: t('receipts.title') }} />
       <Stack.Screen name="receipts/[id]" options={{ title: t('receipts.title') }} />
       <Stack.Screen name="dashboard" options={{ title: t('dashboard.title') }} />
       <Stack.Screen name="team-chat/index" options={{ title: t('chats.title') }} />
       <Stack.Screen name="team-chat/[id]" options={{ title: t('teamChat.title') }} />
-      <Stack.Screen name="agents/index" options={{ title: t('agents.title') }} />
       <Stack.Screen name="agents/[agent]" options={{ title: t('agents.title') }} />
     </Stack>
   );

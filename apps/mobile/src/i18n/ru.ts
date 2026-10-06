@@ -718,6 +718,15 @@ export const ru = {
     accept: 'Принять',
     later: 'Не сейчас',
   },
+  tabs: {
+    home: 'Главная',
+    orders: 'Заказы',
+    ordersAll: 'Все заказы и клиенты',
+    approvals: 'Одобрить',
+    board: 'Доска',
+    agents: 'Агенты',
+    profile: 'Профиль',
+  },
 };
 
 export type Translations = typeof ru;

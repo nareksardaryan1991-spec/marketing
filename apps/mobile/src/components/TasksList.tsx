@@ -13,7 +13,7 @@ import { TaskStatusBadge } from './TaskStatusBadge';
 import { colors } from './theme';
 import { Card, ErrorText } from './ui';
 
-type Row = Task & {
+export type TaskRow = Task & {
   services: { name: Localized } | null;
   businesses: { name: string } | null;
 };
@@ -32,8 +32,7 @@ export function TasksList({
   // Только просроченные: срок прошёл, а работа ещё за командой.
   overdueOnly?: boolean;
 }) {
-  const { language } = useI18n();
-  const [tasks, setTasks] = useState<Row[]>([]);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const statusKey = statuses?.join(',');
 
@@ -50,18 +49,34 @@ export function TasksList({
       if (overdueOnly) query = query.lt('due_date', todayIso()).in('status', OPEN_STATUSES);
       query.then(({ data, error }) => {
         setError(error?.message ?? null);
-        setTasks((data as Row[] | null) ?? []);
+        setTasks((data as TaskRow[] | null) ?? []);
       });
     }, [assigneeId, statusKey, overdueOnly]),
   );
 
+  return <TaskListCard title={title} tasks={tasks} error={error} emptyText={emptyText} />;
+}
+
+// Карточка со списком задач — одна и та же в «Задачах», на главной и в панели владельца.
+export function TaskListCard({
+  title,
+  tasks,
+  error,
+  emptyText,
+}: {
+  title: string;
+  tasks: TaskRow[];
+  error?: string | null;
+  emptyText?: string;
+}) {
+  const { language } = useI18n();
   return (
     <Card>
       <Text style={styles.title}>
         {title} {tasks.length > 0 ? `(${tasks.length})` : ''}
       </Text>
       <ErrorText>{error}</ErrorText>
-      {tasks.length === 0 && !error && <Text style={styles.muted}>{emptyText}</Text>}
+      {tasks.length === 0 && !error && emptyText ? <Text style={styles.muted}>{emptyText}</Text> : null}
       {tasks.map((task) => (
         <Link key={task.id} href={`/tasks/${task.id}`} asChild>
           <Pressable style={styles.row}>

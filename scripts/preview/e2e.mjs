@@ -318,7 +318,9 @@ await fresh.goto(BASE, { waitUntil: 'networkidle0' });
 check('«Your team» shows the agents with honest statuses',
   await waitText(fresh, 'Ваша команда') && (await text(fresh)).includes('Пока без задач') && (await text(fresh)).includes('Лилит'));
 check('no «Личный кабинет» link inside the cabinet', !(await text(fresh)).includes('Личный кабинет'));
-check('empty orders show a hint with a button', (await text(fresh)).includes('Здесь появятся ваши заказы'));
+await fresh.locator('::-p-text(Заказы)').click();
+check('empty orders show a hint with a button', await waitText(fresh, 'Здесь появятся ваши заказы'));
+await fresh.locator('::-p-text(Главная)').click();
 check('agents suggest ideas for the week', await waitText(fresh, 'Пост про осеннее меню', 15000));
 await fresh.screenshot({ path: `${SCREENS}client-home-new.png`, fullPage: true });
 await (await fresh.$$('::-p-text(Не сейчас)'))[1].click();
@@ -428,7 +430,10 @@ check('previews show the material images', await reviewer.waitForFunction(
 await reviewer.screenshot({ path: `${SCREENS}approvals.png`, fullPage: true });
 await reviewer.locator('::-p-text(Попросить правки)').click();
 await waitText(reviewer, 'Нажмите на место в кадре');
-const frame = await (await reviewer.$('img[src*="deliverables"]')).boundingBox();
+// Кадр — в центр экрана, чтобы точку не накрыло нижнее меню.
+const frameImg = await reviewer.$('img[src*="deliverables"]');
+await frameImg.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+const frame = await frameImg.boundingBox();
 await reviewer.mouse.click(frame.x + frame.width * 0.3, frame.y + frame.height * 0.6);
 await reviewer.waitForSelector('textarea[placeholder="Что поменять в этом месте?"]');
 await reviewer.type('textarea[placeholder="Что поменять в этом месте?"]', 'Логотип крупнее');
@@ -456,7 +461,13 @@ await team.locator('::-p-text(Составить план на день)').click
 check('employee assistant plans the day', await waitText(team, 'Главное сейчас'));
 await team.screenshot({ path: `${SCREENS}assistant-day.png`, fullPage: true });
 const clientView = await openAs('client@demo.am');
-await waitText(clientView, 'Мои заказы');
+await waitText(clientView, 'Ваша команда');
+// Нижнее меню: у клиента пять вкладок, без доски и агентов команды.
+const tabs = async (page) => page.$$eval('[role="tab"], a[role="link"][href]', (els) => els.map((e) => e.textContent.trim()));
+const clientTabs = await tabs(clientView);
+check('client has a bottom menu: home, orders, approvals, chats, profile',
+  ['Главная', 'Заказы', 'Одобрить', 'Чаты', 'Профиль'].every((n) => clientTabs.some((x) => x.includes(n))) &&
+  !clientTabs.some((x) => x.includes('Доска') || x.includes('Агенты')), JSON.stringify(clientTabs));
 check('client does not see the employee assistant', !(await text(clientView)).includes('Мой день'));
 check('client does not see AI agents', !(await text(clientView)).includes('AI-агенты'));
 
@@ -474,7 +485,7 @@ const [logoChooser] = await Promise.all([
 await logoChooser.accept([new URL('../../apps/mobile/assets/icon.png', import.meta.url).pathname]);
 check('logo is uploaded and shown', await clientView.waitForSelector('img[src*="/object/public/brand/"]', { timeout: 9000 }).then(() => true, () => false));
 await clientView.locator('::-p-text(Сохранить)').click();
-await waitText(clientView, 'Мои заказы');
+await waitText(clientView, 'Ваша команда');
 await clientView.screenshot({ path: `${SCREENS}client-home-business.png`, fullPage: true });
 await clientView.goto(`${BASE}/business`, { waitUntil: 'networkidle0' });
 check('brand color and logo are saved',
@@ -484,11 +495,20 @@ await clientView.goto(BASE, { waitUntil: 'networkidle0' });
 
 // AI-агенты: пишем дизайнеру своими словами → «Отправить» → картинка сразу в чате → в задачу.
 const agentBoss = await openAs('manager@demo.am');
-await agentBoss.locator('::-p-text(🤖 AI-агенты)').click();
+const bossTabs = await tabs(agentBoss);
+check('manager has a bottom menu: home, board, chats, agents, profile',
+  ['Главная', 'Доска', 'Чаты', 'Агенты', 'Профиль'].every((n) => bossTabs.some((x) => x.includes(n))) &&
+  !bossTabs.some((x) => x.includes('Одобрить')), JSON.stringify(bossTabs));
+check('empty sections fold into compact counters', /· 0/.test(await text(agentBoss)));
+await agentBoss.locator('::-p-text(Профиль)').click();
+check('profile tab lists the rare screens as rows with arrows',
+  await waitText(agentBoss, 'Услуги и цены') && (await text(agentBoss)).includes('Команда') && (await text(agentBoss)).includes('Выйти'));
+await agentBoss.locator('::-p-text(Агенты)').click();
 await waitText(agentBoss, 'AI-менеджер');
 await agentBoss.locator('::-p-text(Лилит)').click();
 await waitText(agentBoss, 'Что сделать?');
-await agentBoss.type('textarea', 'Создай дизайн, где стоит человек, фон — море');
+// Вкладки остаются в памяти (например, «О себе» в профиле) — пишем именно в поле чата агента.
+await agentBoss.type('textarea[placeholder="Напишите задачу своими словами…"]', 'Создай дизайн, где стоит человек, фон — море');
 await agentBoss.locator('::-p-text(➤ Отправить)').click();
 check('AI designer answers in the chat with an image',
   await waitText(agentBoss, 'Демо', 15000) &&
