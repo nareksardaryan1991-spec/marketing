@@ -5,7 +5,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { askClaude } from '../_shared/claude.ts';
 import { corsHeaders, json } from '../_shared/http.ts';
 import { adminClient, userClient } from '../_shared/supabase.ts';
-import { loadTaskContext, nameOf, TASK_STATUS_EN } from '../_shared/task_context.ts';
+import { loadTaskContext, TASK_STATUS_EN, taskName } from '../_shared/task_context.ts';
 
 import {
   languageName,
@@ -18,7 +18,8 @@ import {
 
 const OPEN_STATUSES = ['assigned', 'in_progress', 'changes_requested', 'internal_review'];
 const UNFINISHED = ['new', 'assigned', 'in_progress', 'internal_review', 'changes_requested', 'client_review'];
-const TASK_FIELDS = 'id, number, status, due_date, brief, assignee_id, services(name), platforms(name), businesses(name)';
+const TASK_FIELDS =
+  'id, kind, title, priority, number, status, due_date, brief, assignee_id, services(name), platforms(name), businesses(name)';
 
 // deno-lint-ignore no-explicit-any
 function taskLine(t: any, today: string, people: Record<string, string> = {}) {
@@ -26,7 +27,7 @@ function taskLine(t: any, today: string, people: Record<string, string> = {}) {
   const who = t.assignee_id && people[t.assignee_id] ? `, assignee: ${people[t.assignee_id]}` : '';
   const brief = t.brief ? `\n  brief: ${String(t.brief).slice(0, 300)}` : '\n  brief: (empty)';
   return (
-    `- ${t.businesses?.name ?? ''} — ${t.platforms?.name ? `${t.platforms.name} ` : ''}${nameOf(t.services)} #${t.number}: ` +
+    `- ${t.businesses?.name ?? ''} — ${taskName(t)}: ` +
     `${TASK_STATUS_EN[t.status] ?? t.status}, ${due}${who}${brief}`
   );
 }
@@ -61,7 +62,7 @@ async function myDayPrompt(db: SupabaseClient, userId: string, isManager: boolea
       // deno-lint-ignore no-explicit-any
       const task = ownTasks.find((t) => t.id === a.task_id) as any;
       const notes = (a.approval_marks ?? []).map((m: { note: string }) => m.note);
-      return `- #${task?.number} ${task?.businesses?.name ?? ''}: ${[a.comment, ...notes].filter(Boolean).join('; ')}`;
+      return `- ${task ? taskName(task) : ''} ${task?.businesses?.name ?? ''}: ${[a.comment, ...notes].filter(Boolean).join('; ')}`;
     });
 
   const parts = [

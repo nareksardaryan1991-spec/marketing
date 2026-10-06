@@ -9,9 +9,10 @@ import { canUseAgents, isEmployeeRole } from '@/lib/roles';
 import { useUnreadChats, useWaitingApprovals } from '@/lib/useBadges';
 import { useAuth } from '@/providers/AuthProvider';
 
-// Нижнее меню: у каждой роли — свои 5 вкладок, остальное — в «Профиле».
+// Нижнее меню: у каждой роли свои вкладки, остальное — в «Профиле».
 // Клиент: Главная, Заказы, Согласование, Чаты, Профиль.
-// Штат и менеджер: Главная, Доска, Чаты, AI-агенты, Профиль. У роли «Сотрудник» агентов нет.
+// Штат и менеджер: Главная, Доска, Команда (задачи людям), Чаты, AI-агенты, Профиль.
+// У роли «Сотрудник» агентов нет — пять вкладок.
 export default function TabsLayout() {
   const { t } = useI18n();
   const { profile } = useAuth();
@@ -32,8 +33,8 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, minHeight: 60 },
-        // Пять вкладок на телефоне шириной 360 px: подписи по-армянски длиннее — шрифт мельче, без боковых полей.
-        tabBarLabelStyle: { fontSize: 11, marginBottom: 2 },
+        // До шести вкладок на телефоне шириной 360 px: подписи по-армянски длиннее — шрифт мельче, без боковых полей.
+        tabBarLabelStyle: { fontSize: 10, marginBottom: 2 },
         tabBarItemStyle: { paddingHorizontal: 0, paddingVertical: 4 },
         headerTintColor: colors.primary,
         headerTitleStyle: { color: colors.text },
@@ -70,6 +71,15 @@ export default function TabsLayout() {
           tabBarLabel: t('tabs.board'),
           href: staff ? undefined : null,
           tabBarIcon: icon('albums-outline', 'albums'),
+        }}
+      />
+      <Tabs.Screen
+        name="team-tasks"
+        options={{
+          title: t('teamTasks.title'),
+          tabBarLabel: t('tabs.teamTasks'),
+          href: staff ? undefined : null,
+          tabBarIcon: icon('people-outline', 'people'),
         }}
       />
       <Tabs.Screen

@@ -31,10 +31,18 @@ export function serviceLabel(
 
 // «Instagram · Пост #2» — одинаково на всех экранах.
 export function taskTitle(
-  task: { service_id: string; platform_id: string | null; number: number },
+  task: {
+    kind?: string;
+    title?: string | null;
+    service_id: string | null;
+    platform_id: string | null;
+    number: number | null;
+  },
   serviceName: Localized | null | undefined,
   language: Language,
 ): string {
+  // У задачи команды своё название.
+  if (task.kind === 'team' || !task.service_id) return task.title ?? '';
   const label = serviceLabel(task.service_id, serviceName, task.platform_id, language);
   const platform = platformName(task.platform_id);
   return `${platform ? `${platform} · ` : ''}${label} #${task.number}`;

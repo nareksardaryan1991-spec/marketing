@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
-import type { TaskStatus } from '@/lib/types';
+import type { TaskKind, TaskStatus } from '@/lib/types';
 
 const TONES: Record<TaskStatus, { bg: string; fg: string }> = {
   new: { bg: '#FEF3C7', fg: '#92400E' },
@@ -15,12 +15,25 @@ const TONES: Record<TaskStatus, { bg: string; fg: string }> = {
   published: { bg: '#E5E7EB', fg: '#374151' },
 };
 
-export function TaskStatusBadge({ status }: { status: TaskStatus }) {
+// У задачи команды четыре понятных статуса: «Новая», «В работе», «На проверке», «Готово».
+const TEAM_STATUS: Partial<Record<TaskStatus, string>> = {
+  new: 'new',
+  assigned: 'new',
+  in_progress: 'in_progress',
+  changes_requested: 'in_progress',
+  internal_review: 'internal_review',
+  approved: 'done',
+};
+
+export function TaskStatusBadge({ status, kind = 'order' }: { status: TaskStatus; kind?: TaskKind }) {
   const { t } = useI18n();
-  const tone = TONES[status];
+  const team = kind === 'team' ? TEAM_STATUS[status] : undefined;
+  const tone = team === 'new' ? TONES.assigned : TONES[status];
   return (
     <View style={[styles.badge, { backgroundColor: tone.bg }]}>
-      <Text style={[styles.text, { color: tone.fg }]}>{t(`taskStatus.${status}`)}</Text>
+      <Text style={[styles.text, { color: tone.fg }]}>
+        {team ? t(`teamTasks.status.${team}`) : t(`taskStatus.${status}`)}
+      </Text>
     </View>
   );
 }

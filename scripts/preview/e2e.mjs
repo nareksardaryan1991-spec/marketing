@@ -647,6 +647,87 @@ check('employee opens own task with the brief',
   await waitText(employee, 'Фото десертов на витрине') && !(await text(employee)).includes('Поручить AI-агенту'));
 await employee.screenshot({ path: `${SCREENS}employee-task.png`, fullPage: true });
 
+// 7д. Задачи команды: менеджер ставит задачу человеку → сотрудник сдаёт → менеджер возвращает
+// с комментарием → принимает. Клиент такие задачи не видит.
+// Поле ввода по его подписи (Field: подпись и поле в одном блоке), только видимое.
+async function fieldByLabel(page, label) {
+  const handle = await page.evaluateHandle((l) => {
+    const labels = [...document.querySelectorAll('div')].filter(
+      (d) => d.offsetParent !== null && d.childElementCount === 0 && d.textContent === l,
+    );
+    for (const el of labels) {
+      const input = el.parentElement?.querySelector('input, textarea');
+      if (input) return input;
+    }
+    return null;
+  }, label);
+  const el = handle.asElement();
+  if (!el) throw new Error(`no field ${label}`);
+  return el;
+}
+const lead = await openAs('manager@demo.am');
+await lead.goto(`${BASE}/team-tasks`, { waitUntil: 'networkidle0' });
+await waitText(lead, 'Фотосессия десертов');
+const leadBoard = await text(lead);
+check('team tasks board: own columns and demo tasks',
+  leadBoard.includes('Фотосессия десертов') && leadBoard.includes('Новая задача') &&
+  ['Новые', 'В работе', 'На проверке', 'Готово'].every((c) => leadBoard.includes(c)));
+await (await firstVisible(lead, '::-p-text(Новая задача)')).click();
+await waitText(lead, 'Поставить задачу');
+await (await fieldByLabel(lead, 'Название')).type('Снять витрину к выходным');
+await (await fieldByLabel(lead, 'Описание')).type('Десерты при утреннем свете, 10 кадров');
+await (await firstVisible(lead, '::-p-text(Гор Мкртчян)')).click();
+await (await firstVisible(lead, '::-p-text(Срочно)')).click();
+await (await firstVisible(lead, '::-p-text(Cafe Aroma)')).click();
+// После выбора клиента подгружаются его заказы — форма перерисовывается.
+await waitText(lead, 'Без заказа');
+await (await firstVisible(lead, '::-p-text(Поставить задачу)')).click();
+check('new team task opens with the assignment', await waitText(lead, 'Снять витрину к выходным') &&
+  await waitText(lead, 'Задание') && (await text(lead)).includes('Гор Мкртчян') && (await text(lead)).includes('Срочно'));
+const teamTaskUrl = lead.url();
+check('team task has no client or publishing parts',
+  !(await text(lead)).includes('Отправить клиенту') && !(await text(lead)).includes('Поручить AI-агенту'));
+
+const teamWorker = await openAs('employee@demo.am');
+await teamWorker.goto(`${BASE}/team-tasks`, { waitUntil: 'networkidle0' });
+await waitText(teamWorker, 'Фотосессия десертов');
+const workerBoard = await text(teamWorker);
+// На телефоне видна одна колонка — новая задача в «Новых».
+await (await firstVisible(teamWorker, '::-p-text(Новые)')).click();
+check('employee sees own team tasks only, cannot create',
+  workerBoard.includes('Фотосессия десертов') && !workerBoard.includes('Новая задача') &&
+  await waitText(teamWorker, 'Снять витрину к выходным') && !(await text(teamWorker)).includes('Собрать референсы'));
+await teamWorker.goto(teamTaskUrl, { waitUntil: 'networkidle0' });
+await (await firstVisible(teamWorker, '::-p-text(Взять в работу)')).click();
+await waitText(teamWorker, 'Комментарий к результату');
+await (await fieldByLabel(teamWorker, 'Комментарий к результату')).type('Сделал 10 кадров');
+await (await firstVisible(teamWorker, '::-p-text(Отправить на проверку)')).click();
+check('employee submits the result', await waitText(teamWorker, 'На проверке'));
+
+await lead.reload({ waitUntil: 'networkidle0' });
+await waitText(lead, 'Принять — готово');
+await (await firstVisible(lead, '::-p-text(Вернуть на доработку)')).click();
+check('cannot return without a comment', await waitText(lead, 'Напишите, что исправить'));
+await (await fieldByLabel(lead, 'Комментарий')).type('Добавь два кадра крупно');
+await (await firstVisible(lead, '::-p-text(Вернуть на доработку)')).click();
+await teamWorker.reload({ waitUntil: 'networkidle0' });
+check('employee sees the return comment and works again',
+  await waitText(teamWorker, 'Добавь два кадра крупно') && (await text(teamWorker)).includes('В работе'));
+await (await fieldByLabel(teamWorker, 'Комментарий к результату')).type(' + крупные планы');
+await (await firstVisible(teamWorker, '::-p-text(Отправить на проверку)')).click();
+await waitText(teamWorker, 'На проверке');
+await lead.reload({ waitUntil: 'networkidle0' });
+await (await firstVisible(lead, '::-p-text(Принять — готово)')).click();
+check('manager accepts: the task is done', await waitText(lead, 'Готово') && !(await text(lead)).includes('Принять — готово'));
+await lead.screenshot({ path: `${SCREENS}team-task.png`, fullPage: true });
+
+const outsider = await openAs('client@demo.am');
+const outsiderHome = await text(outsider);
+await outsider.goto(teamTaskUrl, { waitUntil: 'networkidle0' });
+await new Promise((r) => setTimeout(r, 1500));
+check('client has no team tab and cannot open a team task',
+  !outsiderHome.includes('Команда') && !(await text(outsider)).includes('Снять витрину к выходным'));
+
 // 8. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);
 await ghost.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });

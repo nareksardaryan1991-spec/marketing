@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import type { Localized, Task, TaskStatus } from '@/lib/types';
 
 import { DueBadge } from './DueBadge';
+import { PriorityBadge } from './PriorityBadge';
 import { TaskStatusBadge } from './TaskStatusBadge';
 import { colors } from './theme';
 import { Card, ErrorText } from './ui';
@@ -85,9 +86,12 @@ export function TaskListCard({
                 {taskTitle(task, task.services?.name, language)}
               </Text>
               {!!task.businesses?.name && <Text style={styles.muted}>{task.businesses.name}</Text>}
-              <DueBadge due={task.due_date} status={task.status} />
+              <View style={styles.badges}>
+                {task.kind === 'team' && <PriorityBadge priority={task.priority} />}
+                <DueBadge due={task.due_date} status={task.status} />
+              </View>
             </View>
-            <TaskStatusBadge status={task.status} />
+            <TaskStatusBadge status={task.status} kind={task.kind} />
           </Pressable>
         </Link>
       ))}
@@ -107,5 +111,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   rowText: { flex: 1, gap: 2 },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   name: { fontSize: 16, fontWeight: '500', color: colors.text },
 });

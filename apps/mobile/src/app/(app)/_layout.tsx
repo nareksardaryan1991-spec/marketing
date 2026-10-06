@@ -51,6 +51,7 @@ export default function AppLayout() {
       <Stack.Screen name="orders/[id]/chat" options={{ title: t('chat.title') }} />
       <Stack.Screen name="notifications" options={{ title: t('notify.title') }} />
       <Stack.Screen name="tasks/[id]" options={{ title: t('task.task') }} />
+      <Stack.Screen name="team-tasks/edit" options={{ title: t('teamTasks.title') }} />
       <Stack.Screen name="team" options={{ title: t('team.title') }} />
       <Stack.Screen name="calendar" options={{ title: t('calendar.title') }} />
       <Stack.Screen name="social" options={{ title: t('social.title') }} />

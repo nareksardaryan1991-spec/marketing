@@ -19,16 +19,26 @@ export const TASK_STATUS_EN: Record<string, string> = {
 // deno-lint-ignore no-explicit-any
 export const nameOf = (service: any) => service?.name?.en ?? service?.name?.ru ?? '';
 
+// Название задачи для подсказки: работа по заказу — «Instagram Post #3», задача команды — её название.
+// deno-lint-ignore no-explicit-any
+export function taskName(t: any): string {
+  if (t.kind === 'team') return `internal team task "${t.title}" (priority: ${t.priority})`;
+  return `${t.platforms?.name ? `${t.platforms.name} ` : ''}${nameOf(t.services)} #${t.number}`;
+}
+
 export async function loadTaskContext(db: SupabaseClient, taskId: string) {
   const { data: task } = await db
     .from('tasks')
-    .select('id, number, status, due_date, brief, order_id, service_id, assignee_id, services(name), platforms(name), businesses(*), orders(notes)')
+    .select('id, kind, title, priority, number, status, due_date, brief, order_id, service_id, assignee_id, services(name), platforms(name), businesses(*), orders(notes)')
     .eq('id', taskId)
     .maybeSingle();
   if (!task) return null;
 
   const [itemsRes, versionsRes, commentsRes, approvalsRes] = await Promise.all([
-    db.from('order_items').select('quantity, services(name), platforms(name)').eq('order_id', task.order_id),
+    // У задачи команды нет заказа — и позиций заказа.
+    task.order_id
+      ? db.from('order_items').select('quantity, services(name), platforms(name)').eq('order_id', task.order_id)
+      : Promise.resolve({ data: [] }),
     db.from('deliverables').select('version, caption, files').eq('task_id', taskId).order('version', { ascending: false }).limit(3),
     db.from('task_comments').select('body, created_at').eq('task_id', taskId).order('created_at').limit(30),
     db
@@ -52,12 +62,12 @@ export async function loadTaskContext(db: SupabaseClient, taskId: string) {
   const text = [
     // deno-lint-ignore no-explicit-any
     businessProfile(task.businesses as any),
-    `## Order\n${(itemsRes.data ?? [])
+    t.kind === 'team' ? '' : `## Order\n${(itemsRes.data ?? [])
       // deno-lint-ignore no-explicit-any
       .map((i: any) => `- ${i.platforms?.name ? `${i.platforms.name} ` : ''}${nameOf(i.services)} × ${i.quantity}`)
       .join('\n')}`,
     t.orders?.notes ? `## Client notes for the order\n${t.orders.notes}` : '',
-    `## This task\n${t.platforms?.name ? `${t.platforms.name} ` : ''}${nameOf(t.services)} #${t.number}, ` +
+    `## This task\n${taskName(t)}, ` +
       `${TASK_STATUS_EN[t.status] ?? t.status}${t.due_date ? `, due ${t.due_date}` : ''}`,
     `## Manager brief\n${t.brief || '(empty)'}`,
     versions.length ? `## Submitted versions (newest first)\n${versions.join('\n')}` : '',

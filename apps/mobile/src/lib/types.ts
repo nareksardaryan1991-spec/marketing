@@ -138,13 +138,24 @@ export type TaskStatus =
   | 'publishing'
   | 'published';
 
+export type TaskKind = 'order' | 'team';
+export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+// Работа по заказу (kind = 'order': заказ, услуга, номер) или задача команды (kind = 'team':
+// название, важность, файлы к заданию; клиент и заказ — необязательно). Миграция 0028.
 export type Task = {
   id: string;
-  order_id: string;
-  business_id: string;
-  service_id: string;
+  kind: TaskKind;
+  order_id: string | null;
+  business_id: string | null;
+  service_id: string | null;
   platform_id: string | null;
-  number: number;
+  number: number | null;
+  title: string | null;
+  priority: TaskPriority;
+  attachments: string[];
+  created_by: string | null;
+  related_order_id: string | null;
   status: TaskStatus;
   assignee_id: string | null;
   due_date: string | null;

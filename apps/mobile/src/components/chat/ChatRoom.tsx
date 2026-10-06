@@ -2,7 +2,6 @@ import * as Clipboard from 'expo-clipboard';
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -31,6 +30,7 @@ import {
   type PendingFile,
 } from '@/lib/chat';
 import { newCallRoom, openCall } from '@/lib/calls';
+import { confirm } from '@/lib/confirm';
 import { invokeFunction } from '@/lib/functions';
 import { isTeamRole } from '@/lib/roles';
 import { useChat } from '@/lib/useChat';
@@ -46,16 +46,6 @@ import { MessageMenu, type MenuAction } from './MessageMenu';
 
 const GROUP_GAP_MS = 10 * 60 * 1000;
 const COLUMN = 760;
-
-function confirm(message: string): Promise<boolean> {
-  if (Platform.OS === 'web') return Promise.resolve(window.confirm(message));
-  return new Promise((resolve) =>
-    Alert.alert(message, undefined, [
-      { text: '✕', style: 'cancel', onPress: () => resolve(false) },
-      { text: 'OK', style: 'destructive', onPress: () => resolve(true) },
-    ]),
-  );
-}
 
 // Окно чата: шапка с собеседником, закреп, лента на фоне, поле ввода.
 // embedded — внутри списка чатов на широком экране (шапка своя, а не в навигации).

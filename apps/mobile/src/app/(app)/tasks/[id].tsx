@@ -13,6 +13,7 @@ import { ClientFeedback, type Approval } from '@/components/task/ClientFeedback'
 import { Comments } from '@/components/task/Comments';
 import { PublishPanel } from '@/components/task/PublishPanel';
 import { ReviewPanel } from '@/components/task/ReviewPanel';
+import { TeamTaskCard } from '@/components/task/TeamTaskCard';
 import { Versions } from '@/components/task/Versions';
 import { WorkPanel } from '@/components/task/WorkPanel';
 import { TaskStatusBadge } from '@/components/TaskStatusBadge';
@@ -85,7 +86,16 @@ export default function TaskScreen() {
     const commentRows = (commentsRes.data as TaskComment[] | null) ?? [];
     setComments(commentRows);
 
-    const authorIds = [...new Set(commentRows.map((c) => c.author_id))];
+    // Имена авторов комментариев, а у задачи команды — ещё исполнителя и того, кто поставил.
+    const authorIds = [
+      ...new Set(
+        [
+          ...commentRows.map((c) => c.author_id),
+          taskRes.data?.kind === 'team' ? taskRes.data.assignee_id : null,
+          taskRes.data?.kind === 'team' ? taskRes.data.created_by : null,
+        ].filter((v): v is string => !!v),
+      ),
+    ];
     if (authorIds.length > 0) {
       const { data } = await supabase.from('profiles').select('id, full_name, email').in('id', authorIds);
       setAuthors(
@@ -116,9 +126,11 @@ export default function TaskScreen() {
   const isManager = isManagerRole(profile.role);
   const isStaff = isTeamRole(profile.role);
   const isAssignee = task.assignee_id === profile.id;
+  // Задача команды: без клиента на согласовании, публикации и AI-агентов.
+  const team = task.kind === 'team';
   const canWork = isAssignee && WORKING_STATUSES.includes(task.status);
   // Поручить агенту может тот же, кто может сдать версию: исполнитель или менеджер.
-  const taskAgents = agentsForService(task.service_id);
+  const taskAgents = team || !task.service_id ? [] : agentsForService(task.service_id);
   const showAgentLaunch =
     (isAssignee || isManager) &&
     canUseAgents(profile.role) &&
@@ -131,22 +143,38 @@ export default function TaskScreen() {
         <Text style={styles.title}>
           {taskTitle(task, task.services?.name, language)}
         </Text>
-        <TaskStatusBadge status={task.status} />
+        <TaskStatusBadge status={task.status} kind={task.kind} />
       </View>
 
-      <BriefCard
-        business={task.businesses}
-        orderNotes={orderNotes}
-        brief={task.brief}
-        dueDate={task.due_date}
-      />
-
-      <ClientFeedback
-        approvals={approvals}
-        versions={versions}
-        serviceId={task.service_id}
-        name={task.businesses?.name ?? ''}
-      />
+      {team ? (
+        <>
+          <TeamTaskCard
+            key={`team-${revision}`}
+            task={task}
+            businessName={task.businesses?.name ?? null}
+            people={authors}
+            manager={isManager}
+            onChanged={reload}
+          />
+          {/* Задача про клиента — его профиль под рукой, без пожеланий к заказу. */}
+          {task.businesses && <BriefCard business={task.businesses} orderNotes={null} brief={null} dueDate={null} />}
+        </>
+      ) : (
+        <>
+          <BriefCard
+            business={task.businesses}
+            orderNotes={orderNotes}
+            brief={task.brief}
+            dueDate={task.due_date}
+          />
+          <ClientFeedback
+            approvals={approvals}
+            versions={versions}
+            serviceId={task.service_id ?? ''}
+            name={task.businesses?.name ?? ''}
+          />
+        </>
+      )}
 
       {(isStaff || isAssignee) && <AssistantCard taskId={task.id} />}
 
@@ -158,7 +186,7 @@ export default function TaskScreen() {
           onStarted={() => setAgentRefresh((k) => k + 1)}
         />
       )}
-      {(isStaff || isAssignee) && (
+      {!team && (isStaff || isAssignee) && (
         <AgentRuns taskId={task.id} refreshKey={agentRefresh} onFinished={reload} />
       )}
 
@@ -166,6 +194,7 @@ export default function TaskScreen() {
         <ReviewPanel
           key={`review-${revision}`}
           taskId={task.id}
+          kind={task.kind}
           agent={versions[0]?.agent ?? null}
           onDone={reload}
         />
@@ -180,11 +209,11 @@ export default function TaskScreen() {
         />
       )}
 
-      {isStaff && (
+      {!team && isStaff && (
         <PublishPanel key={`publish-${revision}`} task={task} onChanged={reload} />
       )}
 
-      {versions[0] && versions[0].files.length > 0 && (
+      {!team && task.service_id && versions[0] && versions[0].files.length > 0 && (
         <TaskPreview
           version={versions[0]}
           serviceId={task.service_id}
@@ -202,7 +231,7 @@ export default function TaskScreen() {
         onAdded={load}
       />
 
-      {isManager && <AssignPanel key={`assign-${revision}`} task={task} onSaved={reload} />}
+      {!team && isManager && <AssignPanel key={`assign-${revision}`} task={task} onSaved={reload} />}
     </Screen>
   );
 }

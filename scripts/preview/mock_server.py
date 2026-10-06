@@ -232,6 +232,26 @@ def task(n, platform, svc, num, status, assignee=None, publish=None, due=None, b
         'client_review_since': day(-1) if status == 'client_review' else None,
         'services': SVC[svc], 'businesses': BUSINESS, 'orders': {'notes': ORDERS[0]['notes'], 'publishing': 'team'},
         'deliverables': deliverables,
+        'kind': 'order', 'title': None, 'priority': 'normal', 'attachments': [], 'created_by': None, 'related_order_id': None,
+    }
+
+
+# Задача команды (поручение человеку): без заказа, услуги и номера; клиент — необязательно.
+def team_task(n, title, status, assignee, priority='normal', due=None, brief=None, business=None, caption=None,
+              creator=MANAGER):
+    tid = 't1000000-0000-4000-8000-%012d' % n
+    deliverables = [{
+        'id': 'tv%d' % n, 'task_id': tid, 'version': 1, 'caption': caption, 'files': [], 'note': None,
+        'created_by': assignee, 'created_at': day(-1), 'sent_to_client_at': None, 'reviewer_name': None,
+    }] if caption else []
+    return {
+        'id': tid, 'kind': 'team', 'title': title, 'priority': priority, 'attachments': [], 'created_by': creator,
+        'related_order_id': None, 'order_id': None, 'business_id': business['id'] if business else None,
+        'service_id': None, 'platform_id': None, 'number': None, 'status': status, 'assignee_id': assignee,
+        'due_date': due, 'brief': brief, 'publish_at': None, 'published_at': None, 'published_url': None,
+        'publish_error': None, 'autopublish_state': {}, 'created_at': day(-3), 'updated_at': day(-1),
+        'client_review_since': None, 'services': None, 'businesses': business, 'orders': None,
+        'deliverables': deliverables,
     }
 
 
@@ -253,6 +273,11 @@ TASKS = [
     task(9, 'instagram', 'story', 3, 'client_review', DESIGNER, day(2, 9),
          caption='Только сегодня: второй латте — за полцены ☕☕'),
     task(10, 'instagram', 'post', 4, 'assigned', EMPLOYEE, due=day(3)[:10], brief='Фото десертов на витрине при утреннем свете'),
+    team_task(1, 'Фотосессия десертов для осеннего меню', 'in_progress', EMPLOYEE, 'high', day(2)[:10],
+              'Чизкейк, тыквенный пирог и макаруны: 10–15 кадров, светлый фон, вертикаль и квадрат.', BUSINESS),
+    team_task(2, 'Обновить шаблоны сторис в цветах бренда', 'internal_review', DESIGNER, 'normal', day(4)[:10],
+              'Три шаблона: анонс, опрос, акция.', caption='Три шаблона готовы, исходники в Figma.', creator=ADMIN),
+    team_task(3, 'Собрать референсы рилсов для кофеен', 'new', None, 'low', None, 'Пять-десять примеров, что сейчас заходит.'),
 ]
 
 # Оплаты, квитанции, решения клиента, промокоды, настройки агентства.
@@ -905,6 +930,117 @@ def visible_agent_runs():
 
 
 # ---------- Выборки по таблицам (фильтры PostgREST — упрощённо) ----------
+# Комментарии к задачам: тексты проверки и обсуждение.
+TASK_COMMENTS = [{'id': 'c1', 'task_id': TASKS[1]['id'], 'author_id': MANAGER,
+                  'body': 'Отлично, отправляю клиенту.', 'created_at': day(-1)}]
+
+
+def find_task(task_id):
+    return next((t for t in TASKS if t['id'] == task_id), None)
+
+
+# Работа над задачей и задачи команды — те же проверки, что в базе (0003, 0025, 0028).
+def task_rpc(fn, data):
+    profile = me()
+    manager = is_manager(profile['role'])
+    if fn in ('create_team_task', 'update_team_task'):
+        if not manager:
+            return None, 'only managers can change team tasks'
+        title = (data.get('p_title') or '').strip()
+        if not title:
+            return None, 'title is required'
+        assignee = data.get('p_assignee_id')
+        if assignee and not (by_id(assignee) and is_employee(by_id(assignee)['role'])):
+            return None, 'assignee must be a team member'
+        order = next((o for o in ORDERS if o['id'] == data.get('p_order_id')), None)
+        business_id = order['business_id'] if order else data.get('p_business_id')
+        business = next((b for b in BUSINESSES if b['id'] == business_id), None)
+        fields = {'title': title, 'brief': (data.get('p_description') or '').strip() or None, 'assignee_id': assignee,
+                  'due_date': data.get('p_due_date'), 'priority': data.get('p_priority') or 'normal',
+                  'business_id': business['id'] if business else None, 'businesses': business,
+                  'related_order_id': order['id'] if order else None, 'updated_at': now_iso()}
+        if fn == 'create_team_task':
+            new = team_task(len(TASKS) + 100, title, 'assigned' if assignee else 'new', assignee, creator=profile['id'])
+            new.update(fields)
+            new['created_at'] = now_iso()
+            TASKS.append(new)
+            return new['id'], None
+        task_ = find_task(data.get('p_task_id'))
+        if not task_ or task_['kind'] != 'team':
+            return None, 'task not found'
+        if task_['status'] == 'new' and assignee:
+            fields['status'] = 'assigned'
+        elif task_['status'] == 'assigned' and not assignee:
+            fields['status'] = 'new'
+        task_.update(fields)
+        return None, None
+    task_ = find_task(data.get('p_task_id'))
+    visible = task_ and task_['id'] in {t['id'] for t in visible_tasks()}
+    if not visible:
+        return None, 'task not found'
+    if fn == 'set_team_task_attachments':
+        if not manager or task_['kind'] != 'team':
+            return None, 'task not found'
+        task_['attachments'] = data.get('p_files') or []
+        return None, None
+    if fn == 'delete_team_task':
+        if not manager or task_['kind'] != 'team':
+            return None, 'task not found'
+        TASKS.remove(task_)
+        return None, None
+    if fn == 'start_task':
+        if task_['assignee_id'] != profile['id'] or task_['status'] != 'assigned':
+            return None, 'task cannot be started'
+        task_['status'] = 'in_progress'
+        return None, None
+    if fn == 'submit_deliverable':
+        if not (task_['assignee_id'] == profile['id'] or manager):
+            return None, 'task not found'
+        if task_['status'] not in ('assigned', 'in_progress', 'changes_requested'):
+            return None, 'task is not in progress'
+        caption = (data.get('p_caption') or '').strip() or None
+        files = data.get('p_files') or []
+        if not caption and not files:
+            return None, 'deliverable is empty'
+        version = len(task_['deliverables']) + 1
+        task_['deliverables'].insert(0, {
+            'id': '%s-v%d' % (task_['id'], version), 'task_id': task_['id'], 'version': version, 'caption': caption,
+            'files': files, 'note': (data.get('p_note') or '').strip() or None, 'created_by': profile['id'],
+            'created_at': now_iso(), 'sent_to_client_at': None, 'reviewer_name': None})
+        task_['status'] = 'internal_review'
+        return None, None
+    if fn == 'review_task':
+        approve, comment = data.get('p_approve'), (data.get('p_comment') or '').strip()
+        if not manager:
+            return None, 'only managers can review tasks'
+        if task_['kind'] == 'team' and not approve and not comment:
+            return None, 'comment is required to return the task'
+        if task_['status'] != 'internal_review':
+            return None, 'task is not waiting for review'
+        if not approve:
+            task_['status'] = 'in_progress'
+        elif task_['kind'] == 'team':
+            task_['status'] = 'approved'
+        else:
+            task_['status'] = 'client_review'
+            task_['client_review_since'] = now_iso()
+        if approve and task_['deliverables']:
+            latest = max(task_['deliverables'], key=lambda d: d['version'])
+            latest['reviewer_name'] = profile['full_name']
+            if task_['kind'] == 'order':
+                latest['sent_to_client_at'] = now_iso()
+        if comment:
+            TASK_COMMENTS.append({'id': 'c%d' % (len(TASK_COMMENTS) + 1), 'task_id': task_['id'],
+                                  'author_id': profile['id'], 'body': comment, 'created_at': now_iso()})
+        task_['updated_at'] = now_iso()
+        return None, None
+    return None, 'unknown function'
+
+
+TASK_RPCS = ('create_team_task', 'update_team_task', 'set_team_task_attachments', 'delete_team_task',
+             'start_task', 'submit_deliverable', 'review_task')
+
+
 def eq(q, key):
     value = q.get(key, [None])[0]
     return value[3:] if value and value.startswith('eq.') else None
@@ -927,7 +1063,9 @@ def visible_tasks():
     if own_tasks_only(profile['role']):
         return [t for t in TASKS if t['assignee_id'] == profile['id']]
     ids = my_order_ids()
-    return [t for t in TASKS if t['order_id'] in ids]
+    # Задачи команды (без заказа): штат видит все, остальные — только свои, клиент — никакие.
+    return [t for t in TASKS if t['order_id'] in ids or
+            (t['kind'] == 'team' and (is_team(profile['role']) or t['assignee_id'] == profile['id']))]
 
 
 def in_filter(q, key):
@@ -996,7 +1134,7 @@ def rows(table, q):
         return [i for i in ITEMS if i['order_id'] in ids and (not oid or i['order_id'] == oid)]
     if table == 'tasks':
         result = visible_tasks()
-        for key_ in ('id', 'assignee_id', 'order_id', 'business_id'):
+        for key_ in ('id', 'assignee_id', 'order_id', 'business_id', 'kind'):
             if eq(q, key_):
                 result = [t for t in result if t[key_] == eq(q, key_)]
         for status in q.get('status', []):
@@ -1083,8 +1221,9 @@ def rows(table, q):
     if table == 'task_comments':
         if not is_employee(role):
             return []
-        return [{'id': 'c1', 'task_id': TASKS[1]['id'], 'author_id': MANAGER,
-                 'body': 'Отлично, отправляю клиенту.', 'created_at': day(-1)}]
+        visible = {t['id'] for t in visible_tasks()}
+        tid = eq(q, 'task_id')
+        return [c for c in TASK_COMMENTS if c['task_id'] in visible and (not tid or c['task_id'] == tid)]
     if table == 'social_accounts':
         if role == 'client' and not [b for b in BUSINESSES if b['owner_id'] == profile['id'] and b['id'] == BIZ]:
             return []
@@ -1372,6 +1511,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 found = [t for t in visible_tasks() if t['id'] == data.get('p_task_id')]
                 order = found and next((o for o in ORDERS if o['id'] == found[0]['order_id']), None)
                 return self.reply(order['notes'] if order else None)
+            if fn in TASK_RPCS:
+                result, error = task_rpc(fn, data)
+                return self.reply({'message': error}, 400) if error else self.reply(result)
             if fn == 'create_order':
                 order_id, error = create_order(data)
                 return self.reply(order_id) if order_id else self.reply({'message': error}, 400)

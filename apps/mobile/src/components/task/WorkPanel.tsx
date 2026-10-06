@@ -106,7 +106,12 @@ export function WorkPanel({
     <>
       <Card>
         <Text style={styles.cardTitle}>{t('task.workTitle')}</Text>
-        <Field label={t('task.caption')} multiline value={caption} onChangeText={setCaption} />
+        <Field
+          label={task.kind === 'team' ? t('teamTasks.resultText') : t('task.caption')}
+          multiline
+          value={caption}
+          onChangeText={setCaption}
+        />
         <Text style={styles.label}>{t('task.files')}</Text>
         {files.map((path) => (
           <View key={path} style={[styles.row, { justifyContent: 'space-between' }]}>
@@ -133,11 +138,14 @@ export function WorkPanel({
         <ErrorText>{error}</ErrorText>
         <Button title={t('task.submit')} onPress={submit} loading={busy === 'submit'} />
       </Card>
-      <AiPanel
-        taskId={task.id}
-        defaultKind={AI_KIND_BY_SERVICE[task.service_id] ?? 'caption'}
-        onUse={setCaption}
-      />
+      {/* AI-черновики — для текстов по заказу; у задачи команды их нет. */}
+      {task.kind !== 'team' && (
+        <AiPanel
+          taskId={task.id}
+          defaultKind={(task.service_id && AI_KIND_BY_SERVICE[task.service_id]) || 'caption'}
+          onUse={setCaption}
+        />
+      )}
     </>
   );
 }

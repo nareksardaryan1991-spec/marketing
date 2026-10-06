@@ -4,18 +4,21 @@ import { Text } from 'react-native';
 import { useI18n } from '@/i18n';
 import { agentById } from '@/lib/agents';
 import { supabase } from '@/lib/supabase';
+import type { TaskKind } from '@/lib/types';
 
 import { agentLabel } from '../agents/AgentAvatar';
 import { Button, Card, ErrorText, Field } from '../ui';
 import { taskStyles as styles } from './styles';
 
-// Внутренняя проверка менеджером перед отправкой клиенту.
+// Внутренняя проверка менеджером: работу по заказу — клиенту, задачу команды — принять («Готово»).
 export function ReviewPanel({
   taskId,
+  kind = 'order',
   agent,
   onDone,
 }: {
   taskId: string;
+  kind?: TaskKind;
   // Версию сделал AI-агент — напоминаем проверить внимательнее.
   agent?: string | null;
   onDone: () => void;
@@ -57,7 +60,7 @@ export function ReviewPanel({
       <Field label={t('task.comment')} multiline value={comment} onChangeText={setComment} />
       <ErrorText>{error}</ErrorText>
       <Button
-        title={t('task.sendToClient')}
+        title={kind === 'team' ? t('teamTasks.accept') : t('task.sendToClient')}
         onPress={() => review(true)}
         loading={busy === 'approve'}
       />

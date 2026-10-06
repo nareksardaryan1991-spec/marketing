@@ -96,7 +96,7 @@ export function ReviewItem({
       ) : null}
 
       <PostPreview
-        kind={previewKind(task.service_id)}
+        kind={previewKind(task.service_id ?? '')}
         name={name}
         avatarUrl={avatarUrl}
         files={latest?.files ?? []}
