@@ -1070,4 +1070,85 @@ await as(EMPLOYEE, `insert into storage.objects (bucket_id, name) values ('deliv
 await as(EMPLOYEE, `select submit_deliverable($1, 'Сторис готова', array[$2])`, [empTask, empTask + '/s.jpg']);
 check('employee submits work for review', (await as(MANAGER, 'select status from tasks where id = $1', [empTask])).rows[0].status === 'internal_review');
 
+// Задачи команды: поручения людям, клиент их не видит даже по своему заказу.
+const teamTaskArgs = `select create_team_task($1, $2, $3, $4, $5, $6, $7) as id`;
+await fails('employee cannot create team tasks', () => as(EMPLOYEE, teamTaskArgs, ['X', null, EMPLOYEE, null, 'normal', null, null]));
+await fails('designer cannot create team tasks', () => as(DESIGNER, teamTaskArgs, ['X', null, EMPLOYEE, null, 'normal', null, null]));
+await fails('client cannot create team tasks', () => as(CLIENT, teamTaskArgs, ['X', null, EMPLOYEE, null, 'normal', null, null]));
+await fails('team task needs a title', () => as(MANAGER, teamTaskArgs, ['  ', null, EMPLOYEE, null, 'normal', null, null]));
+await fails('team task cannot go to a client', () => as(MANAGER, teamTaskArgs, ['X', null, CLIENT, null, 'normal', null, null]));
+await fails('unknown priority', () => as(MANAGER, teamTaskArgs, ['X', null, EMPLOYEE, null, 'whenever', null, null]));
+await fails('unknown order', () => as(MANAGER, teamTaskArgs, ['X', null, EMPLOYEE, null, 'normal', null, OTHER]));
+const freeTask = (await as(MANAGER, teamTaskArgs, [' Обновить шаблон сторис ', 'Новые цвета бренда', EMPLOYEE, '2026-10-20', 'high', null, null])).rows[0].id;
+const spareTask = (await as(ADMIN, teamTaskArgs, ['Разобрать архив', null, null, null, 'low', null, null])).rows[0].id;
+const ft = (await as(MANAGER, 'select * from tasks where id = $1', [freeTask])).rows[0];
+check('team task without a client: assigned, trimmed, author kept',
+  ft.kind === 'team' && ft.status === 'assigned' && ft.title === 'Обновить шаблон сторис' && ft.brief === 'Новые цвета бренда' &&
+  ft.priority === 'high' && ft.created_by === MANAGER && ft.order_id === null && ft.business_id === null);
+check('owner creates an unassigned team task, two tasks without an order coexist',
+  (await as(MANAGER, 'select status from tasks where id = $1', [spareTask])).rows[0].status === 'new');
+const linkedTask = (await as(MANAGER, teamTaskArgs, ['Снять десерты для заказа', 'Утренний свет', EMPLOYEE, '2026-10-12', 'urgent', null, orderId])).rows[0].id;
+const lt = (await as(MANAGER, 'select * from tasks where id = $1', [linkedTask])).rows[0];
+check('team task about an order keeps the order aside and takes its client',
+  lt.order_id === null && lt.related_order_id === orderId && lt.business_id === bizId);
+await fails('order and client must match', () => as(MANAGER, teamTaskArgs, ['X', null, EMPLOYEE, null, 'normal', OTHER, orderId]));
+
+const teamIds = [freeTask, spareTask, linkedTask];
+check('client does not see team tasks, even about own order',
+  (await as(CLIENT, 'select id from tasks where id = any($1)', [teamIds])).rows.length === 0 &&
+  (await as(CLIENT, 'select can_view_task($1) as v', [linkedTask])).rows[0].v === false);
+check('employee sees only own team tasks',
+  (await as(EMPLOYEE, `select id from tasks where kind = 'team' order by id`)).rows.map(r => r.id).join() === [freeTask, linkedTask].sort().join());
+check('employee does not see an unassigned team task', (await as(EMPLOYEE, 'select id from tasks where id = $1', [spareTask])).rows.length === 0);
+check('freelancer does not see team tasks of others', (await as(FREELANCER, `select id from tasks where kind = 'team'`)).rows.length === 0);
+check('staff team sees team tasks', (await as(DESIGNER, `select id from tasks where kind = 'team'`)).rows.length === 3);
+
+await as(MANAGER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [linkedTask + '/brief/ref.jpg']);
+await fails('attachments must be in the task folder', () => as(MANAGER, 'select set_team_task_attachments($1, $2)', [linkedTask, [freeTask + '/x.jpg']]));
+await fails('employee cannot change attachments', () => as(EMPLOYEE, 'select set_team_task_attachments($1, $2)', [linkedTask, [linkedTask + '/x.jpg']]));
+await as(MANAGER, 'select set_team_task_attachments($1, $2)', [linkedTask, [linkedTask + '/brief/ref.jpg']]);
+const files = async (user) => (await as(user, `select name from storage.objects where bucket_id = 'deliverables' and name like $1`, [linkedTask + '/%'])).rows.map(r => r.name);
+check('employee reads the task files, client does not',
+  (await files(EMPLOYEE)).includes(linkedTask + '/brief/ref.jpg') && (await files(CLIENT)).length === 0);
+
+await fails('team task cannot be scheduled for publishing', () => as(MANAGER, 'select schedule_task($1, now())', [linkedTask]));
+await as(EMPLOYEE, 'select start_task($1)', [linkedTask]);
+check('employee starts the team task', (await as(EMPLOYEE, 'select status from tasks where id = $1', [linkedTask])).rows[0].status === 'in_progress');
+const orderStatusBefore = (await as(MANAGER, 'select status from orders where id = $1', [orderId])).rows[0].status;
+await as(EMPLOYEE, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [linkedTask + '/result.jpg']);
+await as(EMPLOYEE, `select submit_deliverable($1, 'Готово, 12 кадров', array[$2], 'Свет лучше до 10:00')`, [linkedTask, linkedTask + '/result.jpg']);
+check('submitted team task waits for review, order untouched',
+  (await as(MANAGER, 'select status from tasks where id = $1', [linkedTask])).rows[0].status === 'internal_review' &&
+  (await as(MANAGER, 'select status from orders where id = $1', [orderId])).rows[0].status === orderStatusBefore);
+await fails('team task cannot be returned without a comment', () => as(MANAGER, 'select review_task($1, false, $2)', [linkedTask, ' ']));
+await fails('employee cannot review', () => as(EMPLOYEE, 'select review_task($1, true)', [linkedTask]));
+await as(MANAGER, 'select review_task($1, false, $2)', [linkedTask, 'Нужно ещё 3 кадра крупно']);
+check('returned with a comment the employee sees',
+  (await as(EMPLOYEE, 'select status from tasks where id = $1', [linkedTask])).rows[0].status === 'in_progress' &&
+  (await as(EMPLOYEE, 'select body from task_comments where task_id = $1', [linkedTask])).rows.some(r => r.body === 'Нужно ещё 3 кадра крупно'));
+await as(EMPLOYEE, `select submit_deliverable($1, 'Добавил крупные планы', array[$2])`, [linkedTask, linkedTask + '/result.jpg']);
+await as(MANAGER, 'select review_task($1, true)', [linkedTask]);
+const doneVersion = (await as(MANAGER, 'select sent_to_client_at, reviewer_name from deliverables where task_id = $1 order by version desc limit 1', [linkedTask])).rows[0];
+check('accepted team task is done and nothing goes to the client',
+  (await as(MANAGER, 'select status from tasks where id = $1', [linkedTask])).rows[0].status === 'approved' &&
+  doneVersion.sent_to_client_at === null && doneVersion.reviewer_name === 'Boss');
+check('client sees no versions, notes, comments or files of the team task',
+  (await as(CLIENT, 'select id from deliverables where task_id = $1', [linkedTask])).rows.length === 0 &&
+  (await as(CLIENT, 'select note from deliverable_notes where task_id = $1', [linkedTask])).rows.length === 0 &&
+  (await as(CLIENT, 'select id from task_comments where task_id = $1', [linkedTask])).rows.length === 0 &&
+  (await files(CLIENT)).length === 0);
+await fails('accepted team task cannot be published', () => as(MANAGER, 'select mark_published($1)', [linkedTask]));
+
+await fails('employee cannot edit team tasks', () => as(EMPLOYEE, 'select update_team_task($1, $2, null, $3, null, $4)', [freeTask, 'Y', EMPLOYEE, 'normal']));
+await fails('update_team_task does not touch order work', () => as(MANAGER, 'select update_team_task($1, $2, null, $3, null, $4)', [task2, 'Y', EMPLOYEE, 'normal']));
+await as(MANAGER, 'select update_team_task($1, $2, $3, $4, $5, $6, $7)', [spareTask, 'Разобрать архив фото', 'По папкам', EMPLOYEE, '2026-10-25', 'normal', bizId]);
+const st = (await as(EMPLOYEE, 'select * from tasks where id = $1', [spareTask])).rows[0];
+check('manager edits the team task: assigned now, linked to a client', st?.status === 'assigned' && st.title === 'Разобрать архив фото' && st.business_id === bizId);
+await fails('employee cannot delete team tasks', () => as(EMPLOYEE, 'select delete_team_task($1)', [spareTask]));
+await fails('delete_team_task does not delete order work', () => as(MANAGER, 'select delete_team_task($1)', [task2]));
+await as(MANAGER, 'select delete_team_task($1)', [spareTask]);
+check('manager deletes a team task', (await as(MANAGER, 'select id from tasks where id = $1', [spareTask])).rows.length === 0);
+await fails('order work still needs order fields', () => as(null, `insert into tasks (kind, title) values ('order', 'x')`));
+await fails('team task cannot sit on an order', () => as(null, `insert into tasks (kind, title, order_id) values ('team', 'x', $1)`, [orderId]));
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');
