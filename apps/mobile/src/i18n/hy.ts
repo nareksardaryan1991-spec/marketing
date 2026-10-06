@@ -262,6 +262,10 @@ export const hy: Translations = {
     pending: 'Սպասում են դերի',
     staff: 'Աշխատակիցներ',
     clients: 'Հաճախորդներ',
+    jobTitle: 'Պաշտոն',
+    jobTitleHint: 'Օրինակ՝ դիզայներ, լուսանկարիչ',
+    saveJobTitle: 'Պահպանել պաշտոնը',
+    employeeHint: 'Աշխատակիցը տեսնում է միայն իր առաջադրանքները՝ առանց պատվերների, գումարների և այլ հաճախորդների։',
   },
   taskStatus: {
     new: 'Նոր',
@@ -535,6 +539,7 @@ export const hy: Translations = {
     copywriter: 'Կոպիրայթեր',
     smm: 'SMM մասնագետ',
     freelancer: 'Ֆրիլանսեր',
+    employee: 'Աշխատակից',
     admin: 'Սեփականատեր',
     pending: 'Սպասում է դերի',
     video_editor: 'Մոնտաժող',

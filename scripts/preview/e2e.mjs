@@ -632,6 +632,21 @@ check('with JavaScript the app replaces the static page and shows the same intro
   !(await visitor.evaluate(() => !!document.querySelector('.home'))));
 await visitor.screenshot({ path: `${SCREENS}public-home.png`, fullPage: true });
 
+// 7г. Роль «Сотрудник»: должность вместо роли, только свои задачи, без AI-агентов и заказов.
+// Демо-данные сначала: выше AI-менеджер перераспределяет задачи.
+await fetch(`${BASE}/__reset`);
+await new Promise((r) => setTimeout(r, 2000));
+const employee = await openAs('employee@demo.am');
+check('employee sees the job title and own task',
+  await waitText(employee, 'Instagram · Пост #4') && (await text(employee)).includes('Фотограф'));
+const employeeHome = await text(employee);
+check('employee has no AI agents tab and no other people tasks',
+  !employeeHome.includes('Агенты') && !employeeHome.includes('TikTok') && !employeeHome.includes('Пост #3'));
+await employee.locator('::-p-text(Instagram · Пост #4)').click();
+check('employee opens own task with the brief',
+  await waitText(employee, 'Фото десертов на витрине') && !(await text(employee)).includes('Поручить AI-агенту'));
+await employee.screenshot({ path: `${SCREENS}employee-task.png`, fullPage: true });
+
 // 8. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);
 await ghost.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });

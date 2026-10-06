@@ -13,7 +13,7 @@ import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { ACCENT_COLORS, pickProfilePhoto, removeProfilePhotos, type ProfilePhoto } from '@/lib/avatars';
 import { CURRENCIES } from '@/lib/money';
-import { isManagerRole } from '@/lib/roles';
+import { isManagerRole, roleLabel } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import type { Currency, Profile } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
@@ -107,7 +107,7 @@ export default function ProfileScreen() {
 
   return (
     <Screen>
-      <ProfileHeader profile={profile} subtitle={t(`roles.${profile.role}`)} />
+      <ProfileHeader profile={profile} subtitle={roleLabel(t, profile)} />
       <ErrorText>{error}</ErrorText>
       {notice && <Text style={styles.notice}>{notice}</Text>}
 

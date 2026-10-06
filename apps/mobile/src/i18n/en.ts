@@ -262,6 +262,10 @@ export const en: Translations = {
     pending: 'Awaiting role',
     staff: 'Employees',
     clients: 'Clients',
+    jobTitle: 'Job title',
+    jobTitleHint: 'For example: designer, photographer',
+    saveJobTitle: 'Save job title',
+    employeeHint: 'An employee sees only their own tasks — no orders, amounts or other clients.',
   },
   taskStatus: {
     new: 'New',
@@ -535,6 +539,7 @@ export const en: Translations = {
     copywriter: 'Copywriter',
     smm: 'SMM specialist',
     freelancer: 'Freelancer',
+    employee: 'Employee',
     admin: 'Owner',
     pending: 'Awaiting role',
     video_editor: 'Video editor',

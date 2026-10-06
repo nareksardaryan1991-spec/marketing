@@ -14,7 +14,7 @@ import { Screen } from '@/components/Screen';
 import { TaskSections, type TaskSection } from '@/components/TaskSections';
 import { Button } from '@/components/ui';
 import { useI18n } from '@/i18n';
-import { isEmployeeRole, isManagerRole } from '@/lib/roles';
+import { isEmployeeRole, isManagerRole, roleLabel } from '@/lib/roles';
 import type { Business, Profile } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -32,7 +32,7 @@ export default function HomeScreen() {
         accessibilityRole="button"
         accessibilityLabel={t('profile.title')}
         onPress={() => router.navigate('/profile')}>
-        <ProfileHeader profile={profile} subtitle={t(`roles.${profile.role}`)} />
+        <ProfileHeader profile={profile} subtitle={roleLabel(t, profile)} />
       </Pressable>
 
       {profile.role === 'client' && business && <ClientHome business={business} />}

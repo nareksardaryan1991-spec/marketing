@@ -1031,4 +1031,43 @@ await fails('client cannot change exchange rates', () => as(CLIENT, `update agen
 await as(ADMIN, `update agency_settings set usd_rate_amd = 385.5`);
 check('owner sets exchange rates', Number((await as(CLIENT, 'select usd_rate_amd from agency_settings')).rows[0].usd_rate_amd) === 385.5);
 
+// Роль «Сотрудник»: только свои задачи, без заказов и сумм, должность назначает владелец.
+const EMPLOYEE = '66666666-6666-6666-6666-666666666666';
+await db.exec(`insert into auth.users values ('${EMPLOYEE}', 'e@x', '{"full_name":"Emp","account_type":"staff"}')`);
+await as(ADMIN, `select set_user_role($1, 'employee')`, [EMPLOYEE]);
+await fails('manager cannot set a job title', () => as(MANAGER, `select set_job_title($1, 'Дизайнер')`, [EMPLOYEE]));
+await fails('employee cannot set own job title', () => as(EMPLOYEE, `update profiles set job_title = 'Директор' where id = $1`, [EMPLOYEE]));
+await fails('job title only for staff', () => as(ADMIN, `select set_job_title($1, 'Дизайнер')`, [CLIENT]));
+await as(ADMIN, `select set_job_title($1, '  Фотограф ')`, [EMPLOYEE]);
+check('owner sets the job title, colleagues see it',
+  (await as(MANAGER, 'select job_title from profiles where id = $1', [EMPLOYEE])).rows[0].job_title === 'Фотограф');
+check('employee sees no tasks before assignment', (await as(EMPLOYEE, 'select id from tasks')).rows.length === 0);
+const empTask = (await as(MANAGER, `select id from tasks where order_id = $1 and status = 'new' and assignee_id is null order by service_id, number limit 1`, [orderId])).rows[0].id;
+await as(MANAGER, `select assign_task($1, $2, null, 'Снять сторис')`, [empTask, EMPLOYEE]);
+check('employee sees only own task and its business',
+  (await as(EMPLOYEE, 'select id from tasks')).rows.map(r => r.id).join() === empTask &&
+  (await as(EMPLOYEE, 'select id from businesses')).rows.map(r => r.id).join() === bizId);
+check('employee does not see orders, their items or payments',
+  (await as(EMPLOYEE, 'select id from orders')).rows.length === 0 &&
+  (await as(EMPLOYEE, 'select id from order_items')).rows.length === 0 &&
+  (await as(EMPLOYEE, 'select id from payments')).rows.length === 0);
+check('employee reads client notes of own task only',
+  (await as(EMPLOYEE, 'select task_order_notes($1) as n', [empTask])).rows[0].n === order.notes &&
+  (await as(EMPLOYEE, 'select task_order_notes($1) as n', [task2])).rows[0].n === null);
+await as(MANAGER, `update orders set notes = 'Без сахара' where id = $1`, [orderId]);
+check('client notes come through the function',
+  (await as(EMPLOYEE, 'select task_order_notes($1) as n', [empTask])).rows[0].n === 'Без сахара' &&
+  (await as(CLIENT, 'select task_order_notes($1) as n', [empTask])).rows[0].n === 'Без сахара' &&
+  (await as(OTHER, 'select task_order_notes($1) as n', [empTask])).rows[0].n === null);
+await fails('employee cannot open the owner dashboard', () => as(EMPLOYEE, 'select owner_dashboard()'));
+check('employee is not in the team chat or order chats',
+  (await as(EMPLOYEE, 'select id from team_messages')).rows.length === 0 &&
+  (await as(EMPLOYEE, 'select id from messages')).rows.length === 0);
+check('employee sees staff profiles but not clients',
+  !(await as(EMPLOYEE, 'select role from profiles')).rows.some(r => r.role === 'client'));
+await as(EMPLOYEE, 'select start_task($1)', [empTask]);
+await as(EMPLOYEE, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [empTask + '/s.jpg']);
+await as(EMPLOYEE, `select submit_deliverable($1, 'Сторис готова', array[$2])`, [empTask, empTask + '/s.jpg']);
+check('employee submits work for review', (await as(MANAGER, 'select status from tasks where id = $1', [empTask])).rows[0].status === 'internal_review');
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

@@ -260,6 +260,10 @@ export const ru = {
     pending: 'Ждут роли',
     staff: 'Сотрудники',
     clients: 'Клиенты',
+    jobTitle: 'Должность',
+    jobTitleHint: 'Например: дизайнер, фотограф',
+    saveJobTitle: 'Сохранить должность',
+    employeeHint: 'Сотрудник видит только свои задачи — без заказов, сумм и чужих клиентов.',
   },
   taskStatus: {
     new: 'Новая',
@@ -533,6 +537,7 @@ export const ru = {
     copywriter: 'Копирайтер',
     smm: 'SMM-специалист',
     freelancer: 'Фрилансер',
+    employee: 'Сотрудник',
     admin: 'Владелец',
     pending: 'Ждёт роли',
     video_editor: 'Монтажёр',

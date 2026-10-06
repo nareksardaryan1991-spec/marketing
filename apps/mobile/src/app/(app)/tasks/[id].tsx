@@ -24,12 +24,11 @@ import { taskTitle } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
 import type { Business, Deliverable, Localized, Task, TaskComment } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
-import { isManagerRole, isTeamRole } from '@/lib/roles';
+import { canUseAgents, isManagerRole, isTeamRole } from '@/lib/roles';
 
 type TaskRow = Task & {
   services: { name: Localized } | null;
   businesses: Business | null;
-  orders: { notes: string | null } | null;
 };
 
 const WORKING_STATUSES = ['assigned', 'in_progress', 'changes_requested'];
@@ -43,16 +42,17 @@ export default function TaskScreen() {
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [authors, setAuthors] = useState<Record<string, string>>({});
+  const [orderNotes, setOrderNotes] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Меняется после каждого действия, чтобы панели пересоздались с новыми данными.
   const [revision, setRevision] = useState(0);
   const [agentRefresh, setAgentRefresh] = useState(0);
 
   const load = useCallback(async () => {
-    const [taskRes, versionsRes, notesRes, commentsRes, approvalsRes] = await Promise.all([
+    const [taskRes, versionsRes, notesRes, commentsRes, approvalsRes, orderNotesRes] = await Promise.all([
       supabase
         .from('tasks')
-        .select('*, services(name), businesses(*), orders(notes)')
+        .select('*, services(name), businesses(*)')
         .eq('id', id)
         .single<TaskRow>(),
       supabase
@@ -69,7 +69,10 @@ export default function TaskScreen() {
         .eq('task_id', id)
         .order('created_at', { ascending: false })
         .order('position', { referencedTable: 'approval_marks' }),
+      // Пожелания клиента — через функцию: сотруднику сам заказ (с суммами) не виден.
+      supabase.rpc('task_order_notes', { p_task_id: id }),
     ]);
+    setOrderNotes((orderNotesRes.data as string | null) ?? null);
     setApprovals((approvalsRes.data as Approval[] | null) ?? []);
     setError(taskRes.error?.message ?? null);
     setTask(taskRes.data ?? null);
@@ -116,8 +119,9 @@ export default function TaskScreen() {
   const canWork = isAssignee && WORKING_STATUSES.includes(task.status);
   // Поручить агенту может тот же, кто может сдать версию: исполнитель или менеджер.
   const taskAgents = agentsForService(task.service_id);
-  const canUseAgents =
+  const showAgentLaunch =
     (isAssignee || isManager) &&
+    canUseAgents(profile.role) &&
     taskAgents.length > 0 &&
     (AGENT_TASK_STATUSES as readonly string[]).includes(task.status);
 
@@ -132,7 +136,7 @@ export default function TaskScreen() {
 
       <BriefCard
         business={task.businesses}
-        orderNotes={task.orders?.notes ?? null}
+        orderNotes={orderNotes}
         brief={task.brief}
         dueDate={task.due_date}
       />
@@ -146,7 +150,7 @@ export default function TaskScreen() {
 
       {(isStaff || isAssignee) && <AssistantCard taskId={task.id} />}
 
-      {canUseAgents && (
+      {showAgentLaunch && (
         <AgentLaunch
           key={`agent-${revision}`}
           agents={taskAgents}

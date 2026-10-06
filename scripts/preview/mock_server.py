@@ -7,7 +7,7 @@
 Остальные действия (оплата, назначение) не сохраняются.
 
 Запуск: ./scripts/preview.sh  (или python3 scripts/preview/mock_server.py <папка сборки> <порт>)
-Вход: client@demo.am / manager@demo.am / designer@demo.am / freelancer@demo.am, пароль demo1234.
+Вход: client@demo.am / manager@demo.am / designer@demo.am / freelancer@demo.am / employee@demo.am, пароль demo1234.
 """
 import http.server
 import json
@@ -55,11 +55,12 @@ CLIENT = 'c0000000-0000-4000-8000-000000000001'
 MANAGER = 'a0000000-0000-4000-8000-000000000002'
 DESIGNER = 'd0000000-0000-4000-8000-000000000003'
 FREELANCER = 'f0000000-0000-4000-8000-000000000004'
+EMPLOYEE = 'e7000000-0000-4000-8000-000000000007'
 
 
 def person(pid, name, email, role):
     return {'id': pid, 'full_name': name, 'email': email, 'role': role, 'language': 'ru',
-            'phone': None, 'avatar_path': None, 'cover_path': None, 'accent_color': None, 'bio': None,
+            'phone': None, 'job_title': None, 'avatar_path': None, 'cover_path': None, 'accent_color': None, 'bio': None,
             'last_seen_at': None, 'chat_wallpaper': None, 'currency': 'AMD', 'created_at': day(-40)}
 
 
@@ -72,6 +73,7 @@ PROFILES = {
     'manager@demo.am': person(MANAGER, 'Нарек', 'manager@demo.am', 'manager'),
     'designer@demo.am': person(DESIGNER, 'Ани Саргсян', 'designer@demo.am', 'designer'),
     'freelancer@demo.am': person(FREELANCER, 'Давид Акопян', 'freelancer@demo.am', 'freelancer'),
+    'employee@demo.am': {**person(EMPLOYEE, 'Гор Мкртчян', 'employee@demo.am', 'employee'), 'job_title': 'Фотограф'},
 }
 PASSWORDS = {email: PASSWORD for email in PROFILES}
 # Не вошедший зритель: ничего не видит.
@@ -87,7 +89,12 @@ def is_employee(role):
 
 
 def is_team(role):
-    return role not in ('client', 'pending', 'freelancer')
+    return role not in ('client', 'pending', 'freelancer', 'employee')
+
+
+# Видят только свои задачи (сотрудник — ещё и без заказов).
+def own_tasks_only(role):
+    return role in ('freelancer', 'employee')
 
 
 def is_manager(role):
@@ -245,6 +252,7 @@ TASKS = [
          caption='30 секунд из жизни бариста: как рождается тыквенный латте 🎃'),
     task(9, 'instagram', 'story', 3, 'client_review', DESIGNER, day(2, 9),
          caption='Только сегодня: второй латте — за полцены ☕☕'),
+    task(10, 'instagram', 'post', 4, 'assigned', EMPLOYEE, due=day(3)[:10], brief='Фото десертов на витрине при утреннем свете'),
 ]
 
 # Оплаты, квитанции, решения клиента, промокоды, настройки агентства.
@@ -910,12 +918,13 @@ def my_order_ids():
         return {o['id'] for o in ORDERS if o['client_id'] == profile['id']}
     if profile['role'] == 'freelancer':
         return {t['order_id'] for t in TASKS if t['assignee_id'] == profile['id']}
+    # Сотрудник заказы (с суммами) не видит.
     return set()
 
 
 def visible_tasks():
     profile = me()
-    if profile['role'] == 'freelancer':
+    if own_tasks_only(profile['role']):
         return [t for t in TASKS if t['assignee_id'] == profile['id']]
     ids = my_order_ids()
     return [t for t in TASKS if t['order_id'] in ids]
@@ -960,7 +969,7 @@ def rows(table, q):
             return found
         if role == 'client':
             return [b for b in found if b['owner_id'] == profile['id']]
-        if role == 'freelancer':
+        if own_tasks_only(role):
             biz = {t['business_id'] for t in visible_tasks()}
             return [b for b in found if b['id'] in biz]
         return []
@@ -1351,6 +1360,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self.reply({'message': 'this role cannot be changed'}, 400)
                 target['role'] = data.get('new_role')
                 return self.reply(None)
+            if fn == 'set_job_title':
+                target = by_id(data.get('target_user'))
+                if me()['role'] != 'admin':
+                    return self.reply({'message': 'only the administrator can change job titles'}, 400)
+                if not target or not is_employee(target['role']):
+                    return self.reply({'message': 'user not found'}, 400)
+                target['job_title'] = (data.get('new_title') or '').strip() or None
+                return self.reply(None)
+            if fn == 'task_order_notes':
+                found = [t for t in visible_tasks() if t['id'] == data.get('p_task_id')]
+                order = found and next((o for o in ORDERS if o['id'] == found[0]['order_id']), None)
+                return self.reply(order['notes'] if order else None)
             if fn == 'create_order':
                 order_id, error = create_order(data)
                 return self.reply(order_id) if order_id else self.reply({'message': error}, 400)

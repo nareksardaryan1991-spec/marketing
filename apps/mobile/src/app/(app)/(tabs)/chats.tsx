@@ -19,7 +19,7 @@ import { ChatRow, chatTitle } from '@/components/chat/ChatRow';
 import { chatColors } from '@/components/chat/chatTheme';
 import { useI18n } from '@/i18n';
 import { chatHref, type ChatListItem, type ChatRef } from '@/lib/chat';
-import { isEmployeeRole } from '@/lib/roles';
+import { isEmployeeRole, roleLabel } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
@@ -170,7 +170,7 @@ export default function ChatsScreen() {
                   <Avatar name={person.full_name || person.email || '?'} path={person.avatar_path} color={person.accent_color} size={40} />
                   <View style={styles.personText}>
                     <Text style={styles.personName}>{person.full_name || person.email}</Text>
-                    <Text style={styles.personRole}>{t(`roles.${person.role}`)}</Text>
+                    <Text style={styles.personRole}>{roleLabel(t, person)}</Text>
                   </View>
                 </Pressable>
               ))}

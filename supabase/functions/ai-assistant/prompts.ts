@@ -20,6 +20,7 @@ export const ROLE_EN: Record<string, string> = {
   targetologist: 'paid ads specialist (targeting, ad copy, budgets)',
   seo: 'SEO specialist',
   freelancer: 'freelancer working on assigned tasks only',
+  employee: 'agency employee working on assigned tasks only',
 };
 
 const COMMON = `You are the built-in assistant for employees of a social media marketing agency in Armenia.

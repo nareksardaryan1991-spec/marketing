@@ -3,6 +3,7 @@ import { Text } from 'react-native';
 
 import { useI18n } from '@/i18n';
 import { dayKey } from '@/lib/datetime';
+import { roleLabel } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import type { Profile, Task } from '@/lib/types';
 
@@ -62,7 +63,7 @@ export function AssignPanel({ task, onSaved }: { task: Task; onSaved: () => void
           ...team.map((member) => ({
             value: member.id,
             label: member.full_name || member.email || member.id.slice(0, 8),
-            hint: t(`roles.${member.role}`),
+            hint: roleLabel(t, member),
           })),
         ]}
       />

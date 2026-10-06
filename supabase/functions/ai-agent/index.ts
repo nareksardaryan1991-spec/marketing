@@ -215,7 +215,7 @@ async function runManagerAgent(run: Run, db: SupabaseClient, orderId: string) {
       .eq('order_id', orderId)
       .in('status', ['new', 'assigned'])
       .order('number'),
-    db.from('profiles').select('id, full_name, email, role').not('role', 'in', '(client,pending)'),
+    db.from('profiles').select('id, full_name, email, role, job_title').not('role', 'in', '(client,pending)'),
     db.from('tasks').select('assignee_id').in('status', UNFINISHED).not('assignee_id', 'is', null),
   ]);
   if (!orderRes.data) throw new Error('order not found');
@@ -239,7 +239,7 @@ async function runManagerAgent(run: Run, db: SupabaseClient, orderId: string) {
       )
       .join('\n')}`,
     `## Team\n${(teamRes.data ?? [])
-      .map((p) => `- assignee_id ${p.id}: ${p.full_name || p.email}, role ${p.role}, open tasks: ${load[p.id] ?? 0}`)
+      .map((p) => `- assignee_id ${p.id}: ${p.full_name || p.email}, role ${p.role}${p.job_title ? ` (${p.job_title})` : ''}, open tasks: ${load[p.id] ?? 0}`)
       .join('\n')}`,
     run.instructions ? `## Instructions from the manager\n${run.instructions}` : '',
     `## Output language\n${LANGUAGE_NAMES[run.language]}`,
@@ -304,7 +304,8 @@ Deno.serve(async (req) => {
   const admin = adminClient();
   const { data: profile } = await db.from('profiles').select('role').eq('id', auth.user.id).single();
   const role = profile?.role as string | undefined;
-  if (!role || role === 'client' || role === 'pending') return json({ error: 'forbidden' }, 403);
+  // У роли «Сотрудник» AI-агентов нет (как и в меню приложения).
+  if (!role || role === 'client' || role === 'pending' || role === 'employee') return json({ error: 'forbidden' }, 403);
   const isManager = role === 'manager' || role === 'admin';
 
   if (mode === 'attach') {

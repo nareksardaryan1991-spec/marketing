@@ -5,18 +5,19 @@ import type { ColorValue } from 'react-native';
 import type { IconName } from '@/components/NavList';
 import { colors } from '@/components/theme';
 import { useI18n } from '@/i18n';
-import { isEmployeeRole } from '@/lib/roles';
+import { canUseAgents, isEmployeeRole } from '@/lib/roles';
 import { useUnreadChats, useWaitingApprovals } from '@/lib/useBadges';
 import { useAuth } from '@/providers/AuthProvider';
 
 // Нижнее меню: у каждой роли — свои 5 вкладок, остальное — в «Профиле».
 // Клиент: Главная, Заказы, Согласование, Чаты, Профиль.
-// Сотрудник и менеджер: Главная, Доска, Чаты, AI-агенты, Профиль.
+// Штат и менеджер: Главная, Доска, Чаты, AI-агенты, Профиль. У роли «Сотрудник» агентов нет.
 export default function TabsLayout() {
   const { t } = useI18n();
   const { profile } = useAuth();
   const client = profile?.role === 'client';
   const staff = isEmployeeRole(profile?.role);
+  const agents = canUseAgents(profile?.role);
   const unread = useUnreadChats(!!profile);
   const waiting = useWaitingApprovals(client);
 
@@ -84,7 +85,7 @@ export default function TabsLayout() {
         options={{
           title: t('agents.title'),
           tabBarLabel: t('tabs.agents'),
-          href: staff ? undefined : null,
+          href: agents ? undefined : null,
           tabBarIcon: icon('sparkles-outline', 'sparkles'),
         }}
       />

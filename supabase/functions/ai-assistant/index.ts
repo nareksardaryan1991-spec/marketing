@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
 
   // Всё читаем от имени пользователя: помощник видит ровно то, что и сам сотрудник.
   const db = auth.client;
-  const { data: profile } = await db.from('profiles').select('role, full_name').eq('id', auth.user.id).single();
+  const { data: profile } = await db.from('profiles').select('role, full_name, job_title').eq('id', auth.user.id).single();
   const role = profile?.role as string | undefined;
   if (!role || role === 'client' || role === 'pending') return json({ error: 'forbidden' }, 403);
   const isManager = role === 'manager' || role === 'admin';
@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
     taskId = body.task_id;
   }
 
-  const who = `## Employee\n${profile?.full_name || 'Employee'}, role: ${ROLE_EN[role] ?? role}`;
+  const who = `## Employee\n${profile?.full_name || 'Employee'}, role: ${ROLE_EN[role] ?? role}${profile?.job_title ? `, job title: ${profile.job_title}` : ''}`;
   const result = await askClaude(
     mode === 'my_day' ? MY_DAY_SYSTEM : TASK_SYSTEM,
     `${who}\n\n${prompt}\n\nAnswer in ${languageName(language)}.`,

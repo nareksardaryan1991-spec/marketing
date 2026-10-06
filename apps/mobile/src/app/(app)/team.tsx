@@ -5,9 +5,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Choice } from '@/components/Choice';
 import { Screen } from '@/components/Screen';
 import { colors } from '@/components/theme';
-import { Card, ErrorText } from '@/components/ui';
+import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
-import { ASSIGNABLE_ROLES } from '@/lib/roles';
+import { ASSIGNABLE_ROLES, isEmployeeRole, roleLabel } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import type { Profile, UserRole } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
@@ -43,6 +43,14 @@ export default function TeamScreen() {
     load();
   };
 
+  const saveJobTitle = async (userId: string, title: string) => {
+    setError(null);
+    const { error } = await supabase.rpc('set_job_title', { target_user: userId, new_title: title });
+    if (error) setError(error.message);
+    else setOpen(null);
+    load();
+  };
+
   const pending = people.filter((p) => p.role === 'pending');
   const staff = people.filter((p) => p.role !== 'pending' && p.role !== 'client');
   const clients = people.filter((p) => p.role === 'client');
@@ -61,7 +69,7 @@ export default function TeamScreen() {
             <Text style={styles.muted}>{person.email}</Text>
           </View>
           <Text style={[styles.role, person.role === 'pending' && styles.rolePending]}>
-            {t(`roles.${person.role}`)}
+            {roleLabel(t, person)}
             {editable ? ' ▾' : ''}
           </Text>
         </Pressable>
@@ -71,6 +79,9 @@ export default function TeamScreen() {
             onChange={(role) => changeRole(person.id, role)}
             options={ASSIGNABLE_ROLES.map((role) => ({ value: role, label: t(`roles.${role}`) }))}
           />
+        )}
+        {open === person.id && isEmployeeRole(person.role) && (
+          <JobTitleEditor person={person} onSave={(title) => saveJobTitle(person.id, title)} />
         )}
       </View>
     );
@@ -105,6 +116,35 @@ export default function TeamScreen() {
   );
 }
 
+// Должность — подпись к роли («Фотограф»). У роли «Сотрудник» — с напоминанием, что ему видно.
+function JobTitleEditor({ person, onSave }: { person: Profile; onSave: (title: string) => Promise<void> }) {
+  const { t } = useI18n();
+  const [title, setTitle] = useState(person.job_title ?? '');
+  const [saving, setSaving] = useState(false);
+  return (
+    <View style={styles.jobTitle}>
+      {person.role === 'employee' && <Text style={styles.muted}>{t('team.employeeHint')}</Text>}
+      <Field
+        label={t('team.jobTitle')}
+        hint={t('team.jobTitleHint')}
+        value={title}
+        maxLength={60}
+        onChangeText={setTitle}
+      />
+      <Button
+        title={t('team.saveJobTitle')}
+        variant="ghost"
+        loading={saving}
+        onPress={async () => {
+          setSaving(true);
+          await onSave(title);
+          setSaving(false);
+        }}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   hint: { fontSize: 14, color: colors.muted },
   cardTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
@@ -119,4 +159,5 @@ const styles = StyleSheet.create({
   muted: { fontSize: 14, color: colors.muted },
   role: { fontSize: 14, color: colors.primary, fontWeight: '600' },
   rolePending: { color: '#92400E' },
+  jobTitle: { gap: 8 },
 });

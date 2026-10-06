@@ -11,7 +11,9 @@ export type UserRole =
   | 'smm'
   | 'targetologist'
   | 'seo'
-  | 'freelancer';
+  | 'freelancer'
+  // Сотрудник с должностью: видит только свои задачи (миграция 0027).
+  | 'employee';
 
 export type Language = 'ru' | 'hy' | 'en';
 
@@ -20,6 +22,8 @@ export type Profile = {
   full_name: string;
   phone: string | null;
   role: UserRole;
+  // Должность («Фотограф»); назначает владелец.
+  job_title?: string | null;
   language: Language;
   email: string | null;
   // Личный кабинет: пути в bucket avatars, цвет обложки (#RRGGBB) и «о себе».
