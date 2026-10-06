@@ -100,6 +100,12 @@ Deno.serve(async (req) => {
   const vars = Object.fromEntries(
     Object.entries({ ...payload, service }).map(([k, v]) => [k, v == null ? '' : String(v)]),
   );
+  // Что за задача: «Instagram · Пост #3 — Cafe Aroma» или задача команды «Снять меню» (‼️ — срочная).
+  const mark = payload.priority === 'urgent' ? '‼️ ' : payload.priority === 'high' ? '❗ ' : '';
+  vars.task =
+    payload.kind === 'team'
+      ? `${mark}«${payload.title}»${payload.business ? ` — ${payload.business}` : ''}`
+      : `${service} #${payload.number}${payload.business ? ` — ${payload.business}` : ''}`;
   // Звонок: ссылка на комнату на сервере звонков (JITSI_URL, по умолчанию meet.jit.si).
   if (payload.room) {
     const base = (Deno.env.get('JITSI_URL') || 'https://meet.jit.si').replace(/\/+$/, '');

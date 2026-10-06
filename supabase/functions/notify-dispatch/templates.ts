@@ -4,19 +4,24 @@ type Template = (v: Vars) => string;
 
 const T: Record<string, Record<Lang, Template>> = {
   task_assigned: {
-    ru: (v) => `Новая задача: ${v.service} #${v.number} — ${v.business}`,
-    hy: (v) => `Նոր առաջադրանք՝ ${v.service} #${v.number} — ${v.business}`,
-    en: (v) => `New task: ${v.service} #${v.number} — ${v.business}`,
+    ru: (v) => `Новая задача: ${v.task}`,
+    hy: (v) => `Նոր առաջադրանք՝ ${v.task}`,
+    en: (v) => `New task: ${v.task}`,
   },
   task_review: {
-    ru: (v) => `На проверку: ${v.service} #${v.number} — ${v.business}`,
-    hy: (v) => `Ստուգման համար՝ ${v.service} #${v.number} — ${v.business}`,
-    en: (v) => `Ready for review: ${v.service} #${v.number} — ${v.business}`,
+    ru: (v) => `На проверку: ${v.task}`,
+    hy: (v) => `Ստուգման համար՝ ${v.task}`,
+    en: (v) => `Ready for review: ${v.task}`,
   },
   task_returned: {
-    ru: (v) => `Задачу вернули на доработку: ${v.service} #${v.number} — ${v.business}`,
-    hy: (v) => `Առաջադրանքը վերադարձվել է լրամշակման՝ ${v.service} #${v.number} — ${v.business}`,
-    en: (v) => `Task returned for rework: ${v.service} #${v.number} — ${v.business}`,
+    ru: (v) => `Задачу вернули на доработку: ${v.task}` + (v.comment ? `\n«${v.comment}»` : ''),
+    hy: (v) => `Առաջադրանքը վերադարձվել է լրամշակման՝ ${v.task}` + (v.comment ? `\n«${v.comment}»` : ''),
+    en: (v) => `Task returned for rework: ${v.task}` + (v.comment ? `\n"${v.comment}"` : ''),
+  },
+  task_done: {
+    ru: (v) => `✅ Работу приняли: ${v.task}`,
+    hy: (v) => `✅ Աշխատանքն ընդունվեց՝ ${v.task}`,
+    en: (v) => `✅ Work accepted: ${v.task}`,
   },
   client_review: {
     ru: (v) => `Готово к согласованию: ${v.service} #${v.number}. Откройте приложение, чтобы одобрить или попросить правки.`,
@@ -99,19 +104,19 @@ const T: Record<string, Record<Lang, Template>> = {
     en: (v) => `${v.video === 'true' ? '🎥 Video call' : '📞 Call'} from ${v.author}${v.business ? ` (${v.business})` : ''}\nJoin: ${v.call_url}`,
   },
   task_due_soon: {
-    ru: (v) => `⏰ Завтра срок: ${v.service} #${v.number} — ${v.business}`,
-    hy: (v) => `⏰ Վաղը վերջնաժամկետն է՝ ${v.service} #${v.number} — ${v.business}`,
-    en: (v) => `⏰ Due tomorrow: ${v.service} #${v.number} — ${v.business}`,
+    ru: (v) => `⏰ Завтра срок: ${v.task}`,
+    hy: (v) => `⏰ Վաղը վերջնաժամկետն է՝ ${v.task}`,
+    en: (v) => `⏰ Due tomorrow: ${v.task}`,
   },
   task_due_today: {
-    ru: (v) => `⏰ Сегодня срок: ${v.service} #${v.number} — ${v.business}`,
-    hy: (v) => `⏰ Այսօր վերջնաժամկետն է՝ ${v.service} #${v.number} — ${v.business}`,
-    en: (v) => `⏰ Due today: ${v.service} #${v.number} — ${v.business}`,
+    ru: (v) => `⏰ Сегодня срок: ${v.task}`,
+    hy: (v) => `⏰ Այսօր վերջնաժամկետն է՝ ${v.task}`,
+    en: (v) => `⏰ Due today: ${v.task}`,
   },
   task_overdue: {
-    ru: (v) => `🔴 Просрочено (срок ${v.due_date}): ${v.service} #${v.number} — ${v.business}`,
-    hy: (v) => `🔴 Ժամկետանց է (վերջնաժամկետ՝ ${v.due_date})՝ ${v.service} #${v.number} — ${v.business}`,
-    en: (v) => `🔴 Overdue (due ${v.due_date}): ${v.service} #${v.number} — ${v.business}`,
+    ru: (v) => `🔴 Просрочено (срок ${v.due_date}): ${v.task}`,
+    hy: (v) => `🔴 Ժամկետանց է (վերջնաժամկետ՝ ${v.due_date})՝ ${v.task}`,
+    en: (v) => `🔴 Overdue (due ${v.due_date}): ${v.task}`,
   },
   daily_digest: {
     ru: (v) =>

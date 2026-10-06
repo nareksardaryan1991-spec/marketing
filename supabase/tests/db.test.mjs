@@ -1151,4 +1151,38 @@ check('manager deletes a team task', (await as(MANAGER, 'select id from tasks wh
 await fails('order work still needs order fields', () => as(null, `insert into tasks (kind, title) values ('order', 'x')`));
 await fails('team task cannot sit on an order', () => as(null, `insert into tasks (kind, title, order_id) values ('team', 'x', $1)`, [orderId]));
 
+// Уведомления по задачам команды.
+const notesFor = async (taskId) => (await as(null,
+  `select user_id, kind, payload from notifications where payload ->> 'task_id' = $1 order by created_at, kind`, [taskId])).rows;
+const tomorrow = (await as(null, `select (yerevan_today() + 1)::text as d`)).rows[0].d;
+const ntask = (await as(MANAGER, teamTaskArgs, ['Снять меню', null, EMPLOYEE, tomorrow, 'urgent', bizId, null])).rows[0].id;
+let nn = await notesFor(ntask);
+check('employee is notified as soon as the team task is created, with title and priority',
+  nn.length === 1 && nn[0].kind === 'task_assigned' && nn[0].user_id === EMPLOYEE &&
+  nn[0].payload.kind === 'team' && nn[0].payload.title === 'Снять меню' && nn[0].payload.priority === 'urgent' &&
+  nn[0].payload.business === 'Cafe');
+const quiet = (await as(MANAGER, teamTaskArgs, ['Без исполнителя', null, null, null, 'normal', null, null])).rows[0].id;
+check('no notification for a task without an assignee', (await notesFor(quiet)).length === 0);
+await as(MANAGER, 'select update_team_task($1, $2, null, $3, null, $4)', [quiet, 'Без исполнителя', DESIGNER, 'normal']);
+check('assigning later notifies the assignee', (await notesFor(quiet)).map(n => `${n.kind}:${n.user_id}`).join() === `task_assigned:${DESIGNER}`);
+await as(null, `update tasks set due_reminded_on = null where id = $1`, [ntask]);
+await as(null, 'select process_due_reminders()');
+check('employee is reminded a day before the due date',
+  (await notesFor(ntask)).some(n => n.kind === 'task_due_soon' && n.user_id === EMPLOYEE));
+await as(EMPLOYEE, 'select start_task($1)', [ntask]);
+await as(EMPLOYEE, `select submit_deliverable($1, 'Меню снято')`, [ntask]);
+nn = await notesFor(ntask);
+check('managers are notified when the work is submitted',
+  [MANAGER, ADMIN].every(id => nn.some(n => n.kind === 'task_review' && n.user_id === id)) &&
+  !nn.some(n => n.kind === 'task_review' && n.user_id === EMPLOYEE));
+await as(MANAGER, 'select review_task($1, false, $2)', [ntask, 'Нужен вертикальный кадр']);
+nn = await notesFor(ntask);
+check('employee is notified of the return together with the comment',
+  nn.some(n => n.kind === 'task_returned' && n.user_id === EMPLOYEE && n.payload.comment === 'Нужен вертикальный кадр'));
+await as(EMPLOYEE, `select submit_deliverable($1, 'Добавил вертикальный')`, [ntask]);
+await as(MANAGER, 'select review_task($1, true)', [ntask]);
+nn = await notesFor(ntask);
+check('employee is notified when the work is accepted, the client is not notified at all',
+  nn.some(n => n.kind === 'task_done' && n.user_id === EMPLOYEE) && !nn.some(n => n.user_id === CLIENT));
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');
