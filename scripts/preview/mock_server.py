@@ -381,18 +381,29 @@ def owner_dashboard():
     counts = {}
     for o in ORDERS:
         counts[o['status']] = counts.get(o['status'], 0) + 1
-    def n(statuses):
-        return sum(1 for t in TASKS if t['status'] in statuses)
+    def n(statuses, kind=None):
+        return sum(1 for t in TASKS if t['status'] in statuses and (not kind or t['kind'] == kind))
     overdue = [t for t in TASKS if t['due_date'] and t['due_date'] < today and t['status'] in OPEN_STATUSES]
     workload = []
     for p in PROFILES.values():
         if not is_employee(p['role']) or p['role'] == 'admin':
             continue
         mine = [t for t in TASKS if t['assignee_id'] == p['id'] and t['status'] in OPEN_STATUSES]
-        workload.append({'id': p['id'], 'name': p['full_name'], 'role': p['role'], 'avatar_path': p['avatar_path'],
-                         'accent_color': p['accent_color'], 'open': len(mine),
+        workload.append({'id': p['id'], 'name': p['full_name'], 'role': p['role'], 'job_title': p.get('job_title'),
+                         'avatar_path': p['avatar_path'], 'accent_color': p['accent_color'], 'open': len(mine),
+                         'team_open': sum(1 for t in mine if t['kind'] == 'team'),
                          'overdue': sum(1 for t in mine if t in overdue)})
     workload.sort(key=lambda w: (-w['open'], w['name']))
+    # AI-агенты: сейчас работают, их версии ждут проверки, сделано и ошибок за неделю.
+    agents = []
+    for i, aid in enumerate(('smm', 'designer', 'scriptwriter', 'targetologist', 'seo', 'manager')):
+        runs = [r for r in AGENT_RUNS if r['agent'] == aid]
+        review = sum(1 for t in TASKS if t['status'] == 'internal_review' and t['deliverables']
+                     and max(t['deliverables'], key=lambda d: d['version']).get('agent') == aid)
+        agents.append({'id': aid, 'ord': i, 'running': sum(1 for r in runs if r['status'] == 'running'), 'to_review': review,
+                       'done_week': sum(1 for r in runs if r['status'] in ('done', 'applied')),
+                       'failed_week': sum(1 for r in runs if r['status'] == 'failed')})
+    agents.sort(key=lambda a: (-(a['running'] + a['to_review']), a['ord']))
     return {
         'is_admin': admin,
         'revenue_month': sum(o['total_amd'] for o in paid if o['paid_at'][:7] == month) if admin else None,
@@ -401,9 +412,11 @@ def owner_dashboard():
         'active_clients': len({o['client_id'] for o in ORDERS if o['status'] in ('paid', 'in_progress')}),
         'orders': counts,
         'tasks': {'unassigned': n(('new',)), 'in_work': n(('assigned', 'in_progress', 'changes_requested')),
-                  'review': n(('internal_review',)), 'client': n(('client_review',)),
-                  'publish': n(('approved', 'publishing')), 'overdue': len(overdue)},
+                  'review': n(('internal_review',)), 'client': n(('client_review',), 'order'),
+                  'publish': n(('approved', 'publishing'), 'order'), 'overdue': len(overdue),
+                  'team_open': n(OPEN_STATUSES, 'team')},
         'workload': workload,
+        'workload_agents': agents,
     }
 
 

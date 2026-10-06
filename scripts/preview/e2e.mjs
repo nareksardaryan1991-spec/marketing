@@ -750,6 +750,17 @@ await teamWorker.goto(draftUrl, { waitUntil: 'networkidle0' });
 check('employee opens the handed-off task with the draft', await waitText(teamWorker, '🤖 Лилит · Дизайнер') &&
   await teamWorker.waitForSelector('img[src*="/object/sign/deliverables/"]', { timeout: 8000 }).then(() => true, () => false));
 
+// 7ж. «Нагрузка команды»: люди — с задачами команды, агенты — отдельным списком.
+await lead.goto(`${BASE}/dashboard`, { waitUntil: 'networkidle0' });
+check('people workload counts team tasks',
+  await waitText(lead, 'из них задач команды') && (await text(lead)).includes('Открытые задачи команды') &&
+  (await text(lead)).includes('Фотограф'));
+await (await firstVisible(lead, '::-p-text(AI-агенты)')).click();
+check('agents workload shows each agent with weekly work',
+  await waitText(lead, 'Лилит · Дизайнер') && (await text(lead)).includes('за неделю: 1') &&
+  (await text(lead)).includes('Ани · SMM') && !(await text(lead)).includes('из них задач команды'));
+await lead.screenshot({ path: `${SCREENS}dashboard-agents.png`, fullPage: true });
+
 // 8. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);
 await ghost.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });

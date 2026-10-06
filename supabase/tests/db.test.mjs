@@ -1202,4 +1202,27 @@ await fails('only managers hand off agent work', () => as(DESIGNER, handoffArgs,
 check('manager can put the draft files into the new task folder',
   (await as(MANAGER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1) returning name`, [handed + '/draft.png'])).rows.length === 1);
 
+// «Нагрузка команды»: задачи команды у людей, отдельный список агентов.
+const loadTask = (await as(MANAGER, teamTaskArgs, ['Нагрузка: разобрать фото', null, EMPLOYEE, '2026-01-01', 'normal', null, null])).rows[0].id;
+const doneTeam = (await as(MANAGER, teamTaskArgs, ['Нагрузка: готово', null, EMPLOYEE, null, 'normal', null, null])).rows[0].id;
+await as(null, `update tasks set status = 'approved' where id = $1`, [doneTeam]);
+const dash = (await as(MANAGER, 'select owner_dashboard() d')).rows[0].d;
+const empLoad = dash.workload.find(w => w.id === EMPLOYEE);
+const sql = async (q, p) => Number((await as(null, q, p)).rows[0].n);
+check('employee workload counts open team tasks, with job title, not finished ones',
+  empLoad.job_title === 'Фотограф' && Number(empLoad.team_open) ===
+    await sql(`select count(*) n from tasks where assignee_id = $1 and kind = 'team' and is_open_task_status(status)`, [EMPLOYEE]) &&
+  Number(empLoad.open) === await sql(`select count(*) n from tasks where assignee_id = $1 and is_open_task_status(status)`, [EMPLOYEE]) &&
+  Number(empLoad.overdue) >= 1);
+check('finished team tasks are not «to publish»',
+  Number(dash.tasks.publish) === await sql(`select count(*) n from tasks where kind = 'order' and status in ('approved', 'publishing')`) &&
+  Number(dash.tasks.team_open) === await sql(`select count(*) n from tasks where kind = 'team' and is_open_task_status(status)`));
+const agentsLoad = Object.fromEntries(dash.workload_agents.map(a => [a.id, a]));
+check('agents workload lists all six agents with running, review and weekly counts',
+  dash.workload_agents.length === 6 &&
+  Number(agentsLoad.smm.done_week) === await sql(`select count(*) n from agent_runs where agent = 'smm' and status in ('done', 'applied') and created_at >= now() - interval '7 days'`) &&
+  Number(agentsLoad.designer.running) === await sql(`select count(*) n from agent_runs where agent = 'designer' and status = 'running'`) &&
+  Number(agentsLoad.designer.to_review) === await sql(`select count(*) n from tasks t where status = 'internal_review' and (select agent from deliverables d where d.task_id = t.id order by version desc limit 1) = 'designer'`));
+check('agent load is not empty in this test run', dash.workload_agents.some(a => Number(a.running) + Number(a.done_week) + Number(a.to_review) > 0));
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');
