@@ -5,9 +5,11 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '@/i18n';
 import { agentById, type AgentRun, type ManagerPlan } from '@/lib/agents';
 import { formatDateTime } from '@/lib/format';
+import { isManagerRole } from '@/lib/roles';
 import { taskTitle } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
 import type { Localized } from '@/lib/types';
+import { useAuth } from '@/providers/AuthProvider';
 
 import { colors } from '../theme';
 import { Card, ErrorText } from '../ui';
@@ -38,6 +40,8 @@ export function AgentRuns({
   onFinished?: () => void;
 }) {
   const { t, language } = useI18n();
+  const { profile } = useAuth();
+  const manager = isManagerRole(profile?.role);
   const [runs, setRuns] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const running = useRef(new Set<string>());
@@ -45,7 +49,8 @@ export function AgentRuns({
   const load = useCallback(async () => {
     let query = supabase
       .from('agent_runs')
-      .select('*, tasks(service_id, platform_id, number, services(name), businesses(name))')
+      // Связь по agent_runs.task_id: у задачи есть и обратная ссылка (from_agent_run_id, «Передать человеку»).
+      .select('*, tasks!agent_runs_task_id_fkey(service_id, platform_id, number, services(name), businesses(name))')
       .order('created_at', { ascending: false })
       .limit(20);
     // refreshKey в зависимостях: после нового запуска список перечитывается сразу.
@@ -101,6 +106,11 @@ export function AgentRuns({
             {run.instructions ? <Text style={styles.muted}>«{run.instructions}»</Text> : null}
             {run.status === 'done' && run.agent !== 'manager' && (
               <Text style={styles.ok}>{t('agents.sentToReview')}</Text>
+            )}
+            {manager && run.status === 'done' && run.agent !== 'manager' && (
+              <Link href={`/team-tasks/edit?from_run=${run.id}`} style={styles.link}>
+                👤 {t('agents.handOff')} →
+              </Link>
             )}
             {run.status === 'done' && run.agent === 'designer' &&
               (run.result as { backgrounds?: string } | null)?.backgrounds === 'gradient' && (

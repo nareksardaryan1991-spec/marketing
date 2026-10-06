@@ -1185,4 +1185,21 @@ nn = await notesFor(ntask);
 check('employee is notified when the work is accepted, the client is not notified at all',
   nn.some(n => n.kind === 'task_done' && n.user_id === EMPLOYEE) && !nn.some(n => n.user_id === CLIENT));
 
+// «Передать человеку»: задача команды из работы AI-агента.
+const runOf = async (agent, status) => (await as(null,
+  `insert into agent_runs (agent, status, chat, instructions, result, created_by) values ($1, $2, true, 'Пост про осень', $3, $4) returning id`,
+  [agent, status, JSON.stringify({ text: 'Осень в каждой чашке', caption: null, files: [] }), MANAGER])).rows[0].id;
+const doneRun = await runOf('smm', 'done');
+const handoffArgs = `select create_team_task($1, $2, $3, null, 'normal', null, null, $4) as id`;
+const handed = (await as(MANAGER, handoffArgs, ['Доработать черновик', 'Осень в каждой чашке', EMPLOYEE, doneRun])).rows[0].id;
+const ht = (await as(EMPLOYEE, 'select from_agent_run_id, draft_agent, brief from tasks where id = $1', [handed])).rows[0];
+check('handed-off task remembers the agent work and shows the agent to the employee',
+  ht.from_agent_run_id === doneRun && ht.draft_agent === 'smm' && ht.brief === 'Осень в каждой чашке');
+check('employee does not see the agent run itself', (await as(EMPLOYEE, 'select id from agent_runs where id = $1', [doneRun])).rows.length === 0);
+await fails('unfinished agent work cannot be handed off', async () => as(MANAGER, handoffArgs, ['X', null, EMPLOYEE, await runOf('designer', 'running')]));
+await fails('AI manager plan is not a draft', async () => as(MANAGER, handoffArgs, ['X', null, EMPLOYEE, await runOf('manager', 'done')]));
+await fails('only managers hand off agent work', () => as(DESIGNER, handoffArgs, ['X', null, EMPLOYEE, doneRun]));
+check('manager can put the draft files into the new task folder',
+  (await as(MANAGER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1) returning name`, [handed + '/draft.png'])).rows.length === 1);
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

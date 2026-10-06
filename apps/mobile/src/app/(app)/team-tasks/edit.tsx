@@ -2,6 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
+import { agentLabel } from '@/components/agents/AgentAvatar';
 import { Choice } from '@/components/Choice';
 import { DateTimeField } from '@/components/DateTimeField';
 import { Screen } from '@/components/Screen';
@@ -10,6 +11,7 @@ import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { dayKey } from '@/lib/datetime';
 import { formatDate } from '@/lib/format';
+import { copyDraftFiles, loadAgentDraft, type AgentDraft } from '@/lib/handoff';
 import { roleLabel } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import type { OrderStatus, Profile, Task, TaskPriority } from '@/lib/types';
@@ -20,13 +22,13 @@ const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'urgent'];
 type OrderRow = { id: string; created_at: string; status: OrderStatus };
 
 // Новая задача команды или изменение существующей (?id=). Ставят владелец и менеджеры.
-// Название и описание можно передать заранее (?title=&description=) — например, из работы AI-агента.
+// ?from_run= — «Передать человеку»: задача из работы AI-агента, черновик прикрепляется к ней.
 export default function TeamTaskEditScreen() {
-  const params = useLocalSearchParams<{ id?: string; title?: string; description?: string }>();
+  const params = useLocalSearchParams<{ id?: string; from_run?: string }>();
   const { t, language } = useI18n();
   const editing = !!params.id;
-  const [title, setTitle] = useState(params.title ?? '');
-  const [description, setDescription] = useState(params.description ?? '');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [assignee, setAssignee] = useState(NONE);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [priority, setPriority] = useState<TaskPriority>('normal');
@@ -38,6 +40,9 @@ export default function TeamTaskEditScreen() {
   const [ordersOf, setOrdersOf] = useState<{ business: string; rows: OrderRow[] }>({ business: NONE, rows: [] });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<AgentDraft | null>(null);
+  // Задача уже создана, но файлы черновика не скопировались — второй раз не создаём.
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -79,6 +84,27 @@ export default function TeamTaskEditScreen() {
       });
   }, [params.id]);
 
+  // «Передать человеку»: название, описание с текстом черновика, клиент и заказ исходной работы.
+  useEffect(() => {
+    if (!params.from_run || params.id) return;
+    loadAgentDraft(params.from_run)
+      .then((d) => {
+        setDraft(d);
+        const request = d.instructions?.trim();
+        setTitle(
+          `${t('teamTasks.finishDraft')}: ${
+            request ? (request.length > 60 ? `${request.slice(0, 60)}…` : request) : d.agent ? agentLabel(t, d.agent) : ''
+          }`,
+        );
+        setDescription(
+          [d.text, request ? `${t('teamTasks.agentRequest')}: «${request}»` : null].filter(Boolean).join('\n\n'),
+        );
+        if (d.businessId) setBusiness(d.businessId);
+        if (d.orderId) setOrder(d.orderId);
+      })
+      .catch((e: Error) => setError(e.message));
+  }, [params.from_run, params.id, t]);
+
   // Заказы выбранного клиента — чтобы привязать задачу к конкретному заказу.
   useEffect(() => {
     if (!business) return;
@@ -94,6 +120,10 @@ export default function TeamTaskEditScreen() {
   const orders = business && ordersOf.business === business ? ordersOf.rows : [];
 
   const save = async () => {
+    if (createdId) {
+      router.replace(`/tasks/${createdId}`);
+      return;
+    }
     if (!title.trim()) {
       setError(t('teamTasks.titleRequired'));
       return;
@@ -111,20 +141,47 @@ export default function TeamTaskEditScreen() {
     };
     const result = editing
       ? await supabase.rpc('update_team_task', { p_task_id: params.id, ...fields })
-      : await supabase.rpc('create_team_task', fields);
-    setSaving(false);
+      : await supabase.rpc('create_team_task', { ...fields, p_from_run_id: draft?.runId ?? null });
     if (result.error) {
+      setSaving(false);
       setError(result.error.message);
       return;
     }
+    if (editing) {
+      setSaving(false);
+      router.back();
+      return;
+    }
+    const taskId = result.data as string;
+    // Файлы черновика агента — копии в папке задачи.
+    if (draft?.files.length) {
+      try {
+        const files = await copyDraftFiles(draft, taskId);
+        const { error } = await supabase.rpc('set_team_task_attachments', { p_task_id: taskId, p_files: files });
+        if (error) throw error;
+      } catch (e) {
+        setSaving(false);
+        setCreatedId(taskId);
+        setError(`${t('teamTasks.draftFilesFailed')} ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+    }
+    setSaving(false);
     // Новую задачу открываем: там можно прикрепить файлы к заданию.
-    if (editing) router.back();
-    else router.replace(`/tasks/${result.data as string}`);
+    router.replace(`/tasks/${taskId}`);
   };
 
   return (
     <Screen>
       <Stack.Screen options={{ title: editing ? t('teamTasks.editTitle') : t('teamTasks.new') }} />
+      {draft && (
+        <Card>
+          <Text style={styles.cardTitle}>🤖 {t('teamTasks.fromAgent', { agent: draft.agent ? agentLabel(t, draft.agent) : '' })}</Text>
+          <Text style={styles.hint}>
+            {t('teamTasks.draftAttached', { count: draft.files.length })}
+          </Text>
+        </Card>
+      )}
       <Card>
         <Field label={t('teamTasks.name')} value={title} maxLength={200} onChangeText={setTitle} />
         <Field
@@ -196,7 +253,11 @@ export default function TeamTaskEditScreen() {
       </Card>
 
       <ErrorText>{error}</ErrorText>
-      <Button title={editing ? t('common.save') : t('teamTasks.create')} onPress={save} loading={saving} />
+      <Button
+        title={createdId ? t('teamTasks.openTask') : editing ? t('common.save') : t('teamTasks.create')}
+        onPress={save}
+        loading={saving}
+      />
     </Screen>
   );
 }

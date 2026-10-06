@@ -728,6 +728,28 @@ await new Promise((r) => setTimeout(r, 1500));
 check('client has no team tab and cannot open a team task',
   !outsiderHome.includes('Команда') && !(await text(outsider)).includes('Снять витрину к выходным'));
 
+// 7е. «Передать человеку»: ответ AI-агента становится задачей сотруднику с черновиком.
+await lead.goto(`${BASE}/agents/designer`, { waitUntil: 'networkidle0' });
+await waitText(lead, 'Что сделать?');
+await lead.type('textarea[placeholder="Напишите задачу своими словами…"]', 'Нарисуй витрину с десертами');
+await (await firstVisible(lead, '::-p-text(➤ Отправить)')).click();
+await lead.waitForSelector('img[src*="agent-files"]', { timeout: 15000 });
+await (await firstVisible(lead, '::-p-text(👤 Передать человеку)')).click();
+check('hand-off form is filled from the agent draft',
+  await waitText(lead, 'Файлов прикрепится: 1') &&
+  (await (await fieldByLabel(lead, 'Название')).evaluate((e) => e.value)) === 'Доработать черновик: Нарисуй витрину с десертами');
+await (await firstVisible(lead, '::-p-text(Гор Мкртчян)')).click();
+await (await firstVisible(lead, '::-p-text(Поставить задачу)')).click();
+const draftShown = await waitText(lead, '🤖 Лилит · Дизайнер');
+const draftImage = await lead.waitForSelector('img[src*="/object/sign/deliverables/"]', { timeout: 8000 }).then(() => true, () => false);
+check('handed-off task shows the agent draft and its image',
+  draftShown && draftImage, JSON.stringify({ draftShown, draftImage }));
+await lead.screenshot({ path: `${SCREENS}agent-handoff.png` });
+const draftUrl = lead.url();
+await teamWorker.goto(draftUrl, { waitUntil: 'networkidle0' });
+check('employee opens the handed-off task with the draft', await waitText(teamWorker, '🤖 Лилит · Дизайнер') &&
+  await teamWorker.waitForSelector('img[src*="/object/sign/deliverables/"]', { timeout: 8000 }).then(() => true, () => false));
+
 // 8. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);
 await ghost.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });

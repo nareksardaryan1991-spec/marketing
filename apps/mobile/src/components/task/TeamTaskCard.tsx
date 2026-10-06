@@ -3,12 +3,14 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
+import { agentById } from '@/lib/agents';
 import { confirm } from '@/lib/confirm';
 import { fileName, pickAndUpload } from '@/lib/files';
 import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { Task } from '@/lib/types';
 
+import { agentLabel } from '../agents/AgentAvatar';
 import { NavList, NavRow } from '../NavList';
 import { PriorityBadge } from '../PriorityBadge';
 import { colors } from '../theme';
@@ -54,6 +56,7 @@ export function TeamTaskCard({
     onChanged();
   };
 
+  const draftAgent = agentById(task.draft_agent);
   const rows: [string, string | null][] = [
     // due_date — день без времени: T12:00, чтобы часовой пояс не сдвинул дату.
     [t('task.dueDate'), task.due_date && formatDate(`${task.due_date}T12:00:00`, language)],
@@ -61,6 +64,8 @@ export function TeamTaskCard({
     [t('teamTasks.createdBy'), task.created_by ? (people[task.created_by] ?? null) : null],
     [t('teamTasks.client'), businessName],
     [t('teamTasks.description'), task.brief],
+    // «Передать человеку»: описание и файлы — черновик этого агента.
+    [t('teamTasks.draftBy'), draftAgent ? `🤖 ${agentLabel(t, draftAgent)}` : null],
   ];
 
   return (

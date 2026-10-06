@@ -156,6 +156,9 @@ export type Task = {
   attachments: string[];
   created_by: string | null;
   related_order_id: string | null;
+  // «Передать человеку»: из какой работы AI-агента задача и какой агент делал черновик (миграция 0030).
+  from_agent_run_id?: string | null;
+  draft_agent?: string | null;
   status: TaskStatus;
   assignee_id: string | null;
   due_date: string | null;

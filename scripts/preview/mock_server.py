@@ -251,7 +251,7 @@ def team_task(n, title, status, assignee, priority='normal', due=None, brief=Non
         'due_date': due, 'brief': brief, 'publish_at': None, 'published_at': None, 'published_url': None,
         'publish_error': None, 'autopublish_state': {}, 'created_at': day(-3), 'updated_at': day(-1),
         'client_review_since': None, 'services': None, 'businesses': business, 'orders': None,
-        'deliverables': deliverables,
+        'deliverables': deliverables, 'from_agent_run_id': None, 'draft_agent': None,
     }
 
 
@@ -923,9 +923,14 @@ def visible_agent_runs():
                 (run['task_id'] in tasks and is_employee(profile['role']))):
             continue
         task = tasks.get(run['task_id'])
+        version = next((d for d in task['deliverables'] if d['id'] == run.get('deliverable_id')), None) if task else None
         result.append({**run, 'tasks': {'service_id': task['service_id'], 'platform_id': task['platform_id'],
                                         'number': task['number'], 'services': task['services'],
-                                        'businesses': {'name': task['businesses']['name']}} if task else None})
+                                        'businesses': {'name': task['businesses']['name']} if task['businesses'] else None,
+                                        'kind': task['kind'], 'business_id': task['business_id'],
+                                        'order_id': task['order_id'], 'related_order_id': task['related_order_id']}
+                       if task else None,
+                       'deliverables': {'caption': version['caption'], 'files': version['files']} if version else None})
     return sorted(result, key=lambda r: r['created_at'], reverse=True)
 
 
@@ -960,8 +965,16 @@ def task_rpc(fn, data):
                   'business_id': business['id'] if business else None, 'businesses': business,
                   'related_order_id': order['id'] if order else None, 'updated_at': now_iso()}
         if fn == 'create_team_task':
+            run = None
+            if data.get('p_from_run_id'):
+                run = next((r for r in AGENT_RUNS if r['id'] == data['p_from_run_id'] and r['agent'] != 'manager'
+                            and r['status'] in ('done', 'applied')), None)
+                if not run:
+                    return None, 'agent work not found'
             new = team_task(len(TASKS) + 100, title, 'assigned' if assignee else 'new', assignee, creator=profile['id'])
             new.update(fields)
+            if run:
+                new.update(from_agent_run_id=run['id'], draft_agent=run['agent'])
             new['created_at'] = now_iso()
             TASKS.append(new)
             return new['id'], None
@@ -1600,6 +1613,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(png)
             return None
+
+        # «Передать человеку»: копия файла черновика агента в папку задачи (как storage.copy).
+        if path == '/storage/v1/object/copy' and self.command == 'POST':
+            data = self.body()
+            source = AGENT_FILES if data.get('bucketId') == 'agent-files' else DELIVERABLE_FILES
+            target = data.get('destinationKey') or ''
+            if (data.get('destinationBucket') != 'deliverables' or not is_manager(me()['role'])
+                    or data.get('sourceKey') not in source or target.split('/')[0] not in {t['id'] for t in visible_tasks()}):
+                return self.reply({'error': 'not found', 'message': 'Object not found'}, 400)
+            DELIVERABLE_FILES[target] = source[data['sourceKey']]
+            return self.reply({'Key': 'deliverables/' + target})
 
         # Материалы задач: подписанные ссылки и сами картинки.
         if path == '/storage/v1/object/sign/deliverables' and self.command == 'POST':

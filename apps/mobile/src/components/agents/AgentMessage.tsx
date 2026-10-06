@@ -1,5 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -7,6 +7,8 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'rea
 import { useI18n } from '@/i18n';
 import { agentById, type AgentRun, type ChatResult } from '@/lib/agents';
 import { signedUrls } from '@/lib/files';
+import { isManagerRole } from '@/lib/roles';
+import { useAuth } from '@/providers/AuthProvider';
 
 import { colors } from '../theme';
 import { ErrorText } from '../ui';
@@ -16,6 +18,7 @@ import { AttachToTask } from './AttachToTask';
 // Одна пара «запрос сотрудника → ответ агента» в чате.
 export function AgentMessage({ run, onChanged }: { run: AgentRun; onChanged: () => void }) {
   const { t } = useI18n();
+  const { profile } = useAuth();
   const meta = agentById(run.agent);
   const result = run.status === 'done' ? (run.result as ChatResult | null) : null;
   const [attaching, setAttaching] = useState(false);
@@ -67,6 +70,13 @@ export function AgentMessage({ run, onChanged }: { run: AgentRun; onChanged: () 
                 </Link>
               ) : (
                 <Action title={`📌 ${t('agents.toTask')}`} onPress={() => setAttaching((v) => !v)} />
+              )}
+              {/* Задачу человеку ставят владелец и менеджеры. */}
+              {isManagerRole(profile?.role) && (
+                <Action
+                  title={`👤 ${t('agents.handOff')}`}
+                  onPress={() => router.push(`/team-tasks/edit?from_run=${run.id}`)}
+                />
               )}
             </View>
             {attaching && !run.deliverable_id && (
