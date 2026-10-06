@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChatBackground } from '@/components/chat/ChatBackground';
 import { WALLPAPERS } from '@/components/chat/chatTheme';
+import { Choice } from '@/components/Choice';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { NavList, NavRow } from '@/components/NavList';
 import { ProfileHeader } from '@/components/ProfileHeader';
@@ -11,9 +12,10 @@ import { colors } from '@/components/theme';
 import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { ACCENT_COLORS, pickProfilePhoto, removeProfilePhotos, type ProfilePhoto } from '@/lib/avatars';
+import { CURRENCIES } from '@/lib/money';
 import { isManagerRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
-import type { Profile } from '@/lib/types';
+import type { Currency, Profile } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
 // Личный кабинет: у каждого клиента и сотрудника свой — имя, фото, обложка, цвет, «о себе».
@@ -242,6 +244,19 @@ export default function ProfileScreen() {
       <Card>
         <Text style={styles.cardTitle}>{t('common.language')}</Text>
         <LanguageSwitcher />
+      </Card>
+      <Card>
+        <Text style={styles.cardTitle}>{t('money.currency')}</Text>
+        <Choice
+          value={profile.currency ?? 'AMD'}
+          onChange={(currency: Currency) =>
+            run('currency', async () => {
+              await update({ currency });
+            })
+          }
+          options={CURRENCIES.map(({ code, sign }) => ({ value: code, label: `${sign} ${t(`money.names.${code}`)}` }))}
+        />
+        <Text style={styles.muted}>{t('money.currencyHint')}</Text>
       </Card>
       <Button title={t('common.signOut')} variant="ghost" onPress={signOut} />
     </Screen>

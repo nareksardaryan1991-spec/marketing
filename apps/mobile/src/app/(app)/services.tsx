@@ -3,6 +3,8 @@ import { useCallback, useState } from 'react';
 import { Text } from 'react-native';
 
 import { AutoApproveSetting } from '@/components/admin/AutoApproveSetting';
+import { CurrencyRates } from '@/components/admin/CurrencyRates';
+import { PackagesEditor } from '@/components/admin/PackagesEditor';
 import { PromoCodes } from '@/components/admin/PromoCodes';
 import { Screen } from '@/components/Screen';
 import { PlatformPrices } from '@/components/PlatformPrices';
@@ -72,6 +74,7 @@ export default function ServicesScreen() {
       <Text style={styles.muted}>{t('services.hint')}</Text>
       <ErrorText>{error}</ErrorText>
       {services.length > 0 && <PlatformPrices services={services} />}
+      <PackagesEditor key={`packages-${revision}`} />
       {services.map((service) => (
         <ServiceEditor key={`${service.id}-${revision}`} service={service} onSaved={load} />
       ))}
@@ -93,6 +96,7 @@ export default function ServicesScreen() {
         />
         <Button title={t('services.add')} onPress={add} loading={adding} />
       </Card>
+      {isOwner && <CurrencyRates />}
       {isOwner && <AutoApproveSetting />}
       {isOwner && <PromoCodes />}
     </Screen>

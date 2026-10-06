@@ -9,21 +9,25 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { colors } from '@/components/theme';
 import { Button, Card, ErrorText } from '@/components/ui';
 import { useI18n } from '@/i18n';
-import { formatAmd, formatDate } from '@/lib/format';
+import { formatDate, localized } from '@/lib/format';
+import { useMoney } from '@/lib/money';
 import { confirmTestPayment, startPayment, type PaymentProvider } from '@/lib/payments';
 import { platformName, serviceLabel } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
-import type { Order, OrderItem, Service } from '@/lib/types';
+import type { Localized, Order, OrderItem, Service } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { isTeamRole } from '@/lib/roles';
+
+type OrderRow = Order & { packages?: { name: Localized } | null };
 
 type ItemWithService = OrderItem & { services: Pick<Service, 'name'> | null };
 
 export default function OrderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t, language } = useI18n();
+  const { money, moneyToPay, currency } = useMoney();
   const { profile } = useAuth();
-  const [order, setOrder] = useState<Order | null>(null);
+  const [order, setOrder] = useState<OrderRow | null>(null);
   const [items, setItems] = useState<ItemWithService[]>([]);
   const [taskCount, setTaskCount] = useState(0);
   const [receiptId, setReceiptId] = useState<string | null>(null);
@@ -33,7 +37,7 @@ export default function OrderScreen() {
 
   const load = useCallback(async () => {
     const [orderRes, itemsRes, tasksRes, paidRes] = await Promise.all([
-      supabase.from('orders').select('*').eq('id', id).single<Order>(),
+      supabase.from('orders').select('*, packages(name)').eq('id', id).single<OrderRow>(),
       supabase.from('order_items').select('*, services(name)').eq('order_id', id),
       supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('order_id', id),
       supabase
@@ -117,6 +121,11 @@ export default function OrderScreen() {
         </Text>
         <StatusBadge status={order.status} />
       </View>
+      {order.packages && (
+        <Text style={styles.muted}>
+          📦 {t('packages.orderOf', { name: localized(order.packages.name, language) })}
+        </Text>
+      )}
 
       <Card>
         {items.map((item) => (
@@ -126,7 +135,7 @@ export default function OrderScreen() {
               {serviceLabel(item.service_id, item.services?.name, item.platform_id, language)} ×{' '}
               {item.quantity}
             </Text>
-            <Text style={styles.text}>{formatAmd(item.line_total_amd, language)}</Text>
+            <Text style={styles.text}>{money(item.line_total_amd)}</Text>
           </View>
         ))}
         {order.discount_amd > 0 && (
@@ -134,22 +143,23 @@ export default function OrderScreen() {
             <Text style={styles.text}>
               {t('promo.discount')} ({order.promo_code ?? '—'})
             </Text>
-            <Text style={styles.text}>−{formatAmd(order.discount_amd, language)}</Text>
+            <Text style={styles.text}>−{money(order.discount_amd)}</Text>
           </View>
         )}
         {order.ad_budget_amd > 0 && (
           <View style={styles.row}>
             <Text style={styles.text}>{t('order.adBudget')}</Text>
-            <Text style={styles.text}>{formatAmd(order.ad_budget_amd, language)}</Text>
+            <Text style={styles.text}>{money(order.ad_budget_amd)}</Text>
           </View>
         )}
         <View style={[styles.row, styles.totalRow]}>
           <Text style={styles.total}>{t('order.total')}</Text>
           <Text style={styles.total}>
-            {formatAmd(order.total_amd, language)}
+            {moneyToPay(order.total_amd)}
             {order.billing === 'monthly' ? ` ${t('order.perMonth')}` : ''}
           </Text>
         </View>
+        {currency !== 'AMD' && <Text style={styles.muted}>{t('money.payInAmd')}</Text>}
       </Card>
 
       <Card>

@@ -72,6 +72,17 @@ async function signIn(page, email, password = 'demo1234') {
 }
 
 // Неразрывные пробелы (в ценах «8 000») приводим к обычным.
+// Первый видимый элемент: вкладки нижнего меню остаются на странице скрытыми (например, выбор
+// валюты в профиле), а waitForSelector ждёт видимости именно первого совпадения.
+async function firstVisible(page, selector, timeout = 9000) {
+  const until = Date.now() + timeout;
+  while (Date.now() < until) {
+    for (const el of await page.$$(selector)) if (await el.evaluate((e) => e.offsetParent !== null)) return el;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`no visible ${selector}`);
+}
+
 const text = (page) => page.evaluate(() => document.body.innerText.replace(/[\u00a0\u202f]/g, ' '));
 const waitText = (page, value, timeout = 10000) =>
   page.waitForFunction((v) => document.body.innerText.includes(v), { timeout }, value).then(
@@ -332,6 +343,27 @@ check('accepting an idea creates an order waiting for payment',
 // 4. Клиент выбирает площадки и видит отдельные карточки с ценами.
 const client = await openAs('client@demo.am');
 await client.goto(`${BASE}/new-order`, { waitUntil: 'networkidle0' });
+// Пакеты на месяц — первыми: состав, цена за месяц и выгода против заказа по отдельности.
+check('new order starts with monthly packages and shows the saving',
+  await waitText(client, '12 постов в месяц') && (await text(client)).includes('Пакет на месяц') && (await text(client)).includes('−14%'));
+await client.screenshot({ path: `${SCREENS}new-order-packages.png`, fullPage: true });
+await client.locator('::-p-text(12 постов в месяц)').click();
+await client.locator('::-p-text(Перейти к оплате)').click();
+check('package becomes a monthly order at the package price',
+  await waitText(client, 'Пакет «12 постов в месяц»') && (await text(client)).includes('110 000') && (await text(client)).includes('/ мес'));
+// Валюта: в профиле выбрали доллары — суммы с «≈ $», а платят в драмах.
+const packageOrderUrl = client.url();
+await client.goto(`${BASE}/profile`, { waitUntil: 'networkidle0' });
+await client.locator('::-p-text(Доллар США)').click();
+await new Promise((r) => setTimeout(r, 500));
+await client.goto(packageOrderUrl, { waitUntil: 'networkidle0' });
+check('prices are shown in the chosen currency, payment stays in drams',
+  await waitText(client, 'Оплата в драмах') && /≈ [\d\s,]+ \$/.test(await text(client)) && (await text(client)).includes('110 000'));
+await client.goto(`${BASE}/profile`, { waitUntil: 'networkidle0' });
+await client.locator('::-p-text(Армянский драм)').click();
+await waitText(client, 'Армянский драм');
+await client.goto(`${BASE}/new-order`, { waitUntil: 'networkidle0' });
+await client.locator('::-p-text(Собрать самому)').click();
 await client.locator('::-p-text(Instagram)').click();
 await client.locator('::-p-text(Facebook)').click();
 const orderText = await text(client);
@@ -518,7 +550,7 @@ await agentBoss.screenshot({ path: `${SCREENS}agent-chat-designer.png`, fullPage
 await agentBoss.locator('::-p-text(📌 В задачу…)').click();
 await waitText(agentBoss, 'Отправить в задачу на проверку');
 await agentBoss.waitForSelector('[role="radio"]');
-await (await agentBoss.$$('[role="radio"]'))[0].click();
+await (await firstVisible(agentBoss, '[role="radio"]')).click();
 await agentBoss.locator('::-p-text(Отправить на проверку)').click();
 check('chat result goes to a task', await waitText(agentBoss, 'Отправлено в задачу'));
 await agentBoss.locator('::-p-text(Отправлено в задачу)').click();
@@ -537,7 +569,7 @@ check('AI SMM answers with text', await waitText(agentBoss, '#CafeAroma', 15000)
 // Менеджер-агент: план по заказу применяется только кнопкой.
 await agentBoss.goto(`${BASE}/agents/manager`, { waitUntil: 'networkidle0' });
 await waitText(agentBoss, 'Выберите заказ');
-await (await agentBoss.$$('[role="radio"]'))[0].click();
+await (await firstVisible(agentBoss, '[role="radio"]')).click();
 await agentBoss.locator('::-p-text(🤖 Запустить)').click();
 check('AI manager prepares a plan', await waitText(agentBoss, 'Применить план', 15000) && (await text(agentBoss)).includes('Демо-бриф'));
 await agentBoss.locator('::-p-text(Применить план)').click();
@@ -550,6 +582,7 @@ check('employee sees role agents but not the AI manager',
   await waitText(team, 'Сценарист') && (await text(team)).includes('Ани') && !(await text(team)).includes('AI-менеджер'));
 
 await reviewer.goto(`${BASE}/new-order`, { waitUntil: 'networkidle0' });
+await reviewer.locator('::-p-text(Собрать самому)').click();
 await reviewer.locator('::-p-text(Instagram)').click();
 await reviewer.locator('[aria-label="+"]').click();
 await reviewer.type('input[placeholder="AUTUMN10"]', 'autumn10');
@@ -571,6 +604,8 @@ await reviewer.screenshot({ path: `${SCREENS}receipt.png`, fullPage: true });
 await owner.goto(`${BASE}/services`, { waitUntil: 'networkidle0' });
 check('owner manages auto-approval and promo codes',
   await waitText(owner, 'Автоодобрение') && await waitText(owner, 'AUTUMN10') && (await text(owner)).includes('использован 3 из 50'));
+check('owner manages monthly packages and exchange rates',
+  (await text(owner)).includes('Пакеты на месяц') && (await text(owner)).includes('Курсы валют'));
 
 // 8. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);

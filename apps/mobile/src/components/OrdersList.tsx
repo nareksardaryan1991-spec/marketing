@@ -3,7 +3,8 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
-import { formatAmd, formatDate } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { useMoney } from '@/lib/money';
 import { supabase } from '@/lib/supabase';
 import type { Order } from '@/lib/types';
 
@@ -22,6 +23,7 @@ export function OrdersList({
   empty?: { text: string; action: string; onAction: () => void };
 }) {
   const { t, language } = useI18n();
+  const { money } = useMoney();
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +59,7 @@ export function OrdersList({
                 {t('order.orderFrom', { date: formatDate(order.created_at, language) })}
               </Text>
               <Text style={styles.muted}>
-                {formatAmd(order.total_amd, language)}
+                {money(order.total_amd)}
                 {order.billing === 'monthly' ? ` ${t('order.perMonth')}` : ''}
               </Text>
             </View>

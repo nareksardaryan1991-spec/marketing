@@ -5,7 +5,8 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '@/i18n';
 import { agentById } from '@/lib/agents';
 import { acceptIdea, currentWeekStart, dismissIdea, startIdeas, type TaskIdea } from '@/lib/clientAi';
-import { formatAmd, localized } from '@/lib/format';
+import { localized } from '@/lib/format';
+import { useMoney } from '@/lib/money';
 import { supabase } from '@/lib/supabase';
 import type { Localized } from '@/lib/types';
 
@@ -19,6 +20,7 @@ type Offer = { platform: string | null; service: string; price: number | null; l
 // «Принять» создаёт заказ из одной позиции и открывает его для оплаты.
 export function IdeasCard() {
   const { t, language } = useI18n();
+  const { money } = useMoney();
   const [ideas, setIdeas] = useState<TaskIdea[]>([]);
   const [batch, setBatch] = useState<'none' | 'running' | 'done' | null>(null);
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -115,7 +117,7 @@ export function IdeasCard() {
     const fallback = names[idea.service_id] ? localized(names[idea.service_id].name, language) : '';
     const service = label || fallback;
     const price = offer?.price ?? names[idea.service_id]?.price;
-    return [idea.platform_id ? platforms[idea.platform_id] : null, service, price != null ? formatAmd(price, language) : null]
+    return [idea.platform_id ? platforms[idea.platform_id] : null, service, price != null ? money(price) : null]
       .filter(Boolean)
       .join(' · ');
   };

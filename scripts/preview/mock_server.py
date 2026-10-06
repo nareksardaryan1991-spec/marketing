@@ -60,7 +60,7 @@ FREELANCER = 'f0000000-0000-4000-8000-000000000004'
 def person(pid, name, email, role):
     return {'id': pid, 'full_name': name, 'email': email, 'role': role, 'language': 'ru',
             'phone': None, 'avatar_path': None, 'cover_path': None, 'accent_color': None, 'bio': None,
-            'last_seen_at': None, 'chat_wallpaper': None, 'created_at': day(-40)}
+            'last_seen_at': None, 'chat_wallpaper': None, 'currency': 'AMD', 'created_at': day(-40)}
 
 
 ADMIN = 'ad000000-0000-4000-8000-000000000005'
@@ -96,7 +96,7 @@ def is_manager(role):
 # Фото из личного кабинета (bucket avatars): путь -> (тип, байты). Живут, пока сервер запущен.
 PHOTOS = {}
 PROFILE_FIELDS = ('full_name', 'phone', 'language', 'avatar_path', 'cover_path', 'accent_color', 'bio',
-                  'chat_wallpaper')
+                  'chat_wallpaper', 'currency')
 
 # Кто делает текущий запрос — определяется по токену входа (у каждого окна свой).
 REQUEST = threading.local()
@@ -252,7 +252,44 @@ PAYMENTS = [{'id': 'p0000000-0000-4000-8000-000000000001', 'order_id': ORDER, 'p
 APPROVALS = []
 PROMO_CODES = [{'code': 'AUTUMN10', 'percent': 10, 'amount_amd': None, 'max_uses': 50, 'used_count': 3,
                 'valid_until': day(30)[:10], 'active': True, 'created_at': day(-5)}]
-AGENCY = {'id': True, 'auto_approve_days': 3, 'updated_at': day(-5)}
+AGENCY = {'id': True, 'auto_approve_days': 3, 'usd_rate_amd': 390, 'eur_rate_amd': 420, 'updated_at': day(-5)}
+
+# Пакеты на месяц (как в миграции 0024): состав из каталога и цена за месяц.
+PACKAGES = [
+    {'id': 'pa000000-0000-4000-8000-%012d' % n, 'name': name, 'description': desc, 'price_amd': price,
+     'active': True, 'sort_order': n * 10, 'created_at': day(-30),
+     'package_items': [{'package_id': 'pa000000-0000-4000-8000-%012d' % n, 'service_id': sid, 'platform_id': 'instagram',
+                        'quantity': qty} for sid, qty in items]}
+    for n, name, desc, price, items in [
+        (1, {'ru': 'Старт', 'hy': 'Մեկնարկ', 'en': 'Start'},
+         {'ru': '8 постов в Instagram в месяц: текст и картинка', 'hy': 'Ամսական 8 գրառում Instagram-ում՝ տեքստ և նկար',
+          'en': '8 Instagram posts a month: text and image'}, 56000, [('post', 8)]),
+        (2, {'ru': '12 постов в месяц', 'hy': 'Ամսական 12 գրառում', 'en': '12 posts a month'},
+         {'ru': '12 постов с картинками и 8 сторис в Instagram', 'hy': '12 գրառում նկարներով և 8 սթորի Instagram-ում',
+          'en': '12 posts with images and 8 stories on Instagram'}, 110000, [('post', 12), ('story', 8)]),
+        (3, {'ru': 'Видео', 'hy': 'Տեսանյութ', 'en': 'Video'},
+         {'ru': '8 постов и 4 рилса в Instagram в месяц', 'hy': 'Ամսական 8 գրառում և 4 ռիլս Instagram-ում',
+          'en': '8 posts and 4 reels on Instagram a month'}, 145000, [('post', 8), ('reel', 4)]),
+    ]
+]
+
+
+def create_package_order(data):
+    """Как create_package_order в базе: ежемесячный заказ по составу пакета, цена — цена пакета."""
+    package = next((p for p in PACKAGES if p['id'] == data.get('p_package_id') and p['active']), None)
+    if not package:
+        return None, 'package not found'
+    order_id, error = create_order({'p_business_id': data.get('p_business_id'), 'p_billing': 'monthly',
+                                    'p_publishing': data.get('p_publishing'), 'p_ad_budget_amd': 0,
+                                    'p_notes': data.get('p_notes'),
+                                    'p_items': [{k: i[k] for k in ('service_id', 'platform_id', 'quantity')}
+                                                for i in package['package_items']]})
+    if not order_id:
+        return None, error
+    order = next(o for o in ORDERS if o['id'] == order_id)
+    price = min(package['price_amd'], order['items_total_amd'])
+    order.update(package_id=package['id'], discount_amd=order['items_total_amd'] - price, total_amd=price)
+    return order_id, None
 
 MESSAGES = [
     {'id': 'm1', 'order_id': ORDER, 'author_id': CLIENT, 'author_name': 'Анна Петросян', 'from_client': True,
@@ -933,7 +970,8 @@ def rows(table, q):
         return PLATFORM_SERVICES
     if table == 'orders':
         ids = my_order_ids()
-        result = [{**o, 'businesses': {'name': next((b['name'] for b in BUSINESSES if b['id'] == o['business_id']), '')}}
+        result = [{**o, 'businesses': {'name': next((b['name'] for b in BUSINESSES if b['id'] == o['business_id']), '')},
+                   'packages': next(({'name': p['name']} for p in PACKAGES if p['id'] == o.get('package_id')), None)}
                   for o in ORDERS if o['id'] in ids]
         if eq(q, 'id'):
             result = [o for o in result if o['id'] == eq(q, 'id')]
@@ -994,6 +1032,8 @@ def rows(table, q):
         return result
     if table == 'agency_settings':
         return [AGENCY] if role != 'pending' else []
+    if table == 'packages':
+        return [p for p in PACKAGES if p['active'] or is_manager(role)]
     if table == 'promo_codes':
         return PROMO_CODES if role == 'admin' else []
     if table == 'payments':
@@ -1315,6 +1355,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if fn in ('accept_task_idea', 'dismiss_task_idea'):
                 order_id, error = decide_idea(data.get('p_idea_id'), fn == 'accept_task_idea')
                 return self.reply({'message': error}, 400) if error else self.reply(order_id)
+            if fn == 'create_package_order':
+                order_id, error = create_package_order(data)
+                return self.reply(order_id) if order_id else self.reply({'message': error}, 400)
             if fn == 'check_promo':
                 promo, error = valid_promo(data.get('p_code'))
                 return self.reply({'message': error}, 400) if error else self.reply(
@@ -1359,7 +1402,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if me()['role'] != 'admin':
                 return self.reply([])
             if path.endswith('agency_settings'):
-                AGENCY.update({k: v for k, v in data.items() if k == 'auto_approve_days'})
+                AGENCY.update({k: v for k, v in data.items() if k in ('auto_approve_days', 'usd_rate_amd', 'eur_rate_amd')})
                 return self.reply([AGENCY])
             if self.command == 'PATCH':
                 promo = next((p for p in PROMO_CODES if p['code'] == eq(q, 'code')), None)
@@ -1411,6 +1454,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(png)
             return None
+
+        # Пакеты: меняет менеджер или владелец (как правила в базе).
+        if path in ('/rest/v1/packages', '/rest/v1/package_items') and self.command in ('POST', 'PATCH', 'DELETE'):
+            if not is_manager(me()['role']):
+                return self.reply({'message': 'new row violates row-level security policy'}, 403)
+            data = self.body() if self.command != 'DELETE' else {}
+            if path.endswith('packages') and self.command == 'POST':
+                package = {'id': 'pa000000-0000-4000-8000-%012d' % (len(PACKAGES) + 1), 'description': {}, 'active': True,
+                           'sort_order': 0, 'created_at': now_iso(), **data, 'package_items': []}
+                PACKAGES.append(package)
+                return self.reply(package if self.wants_object() else [package], 201)
+            if path.endswith('packages'):
+                package = next((p for p in PACKAGES if p['id'] == eq(q, 'id')), None)
+                if package:
+                    package.update({k: v for k, v in data.items() if k in ('name', 'description', 'price_amd', 'active')})
+                return self.reply([package] if package else [])
+            if self.command == 'DELETE':
+                package = next((p for p in PACKAGES if p['id'] == eq(q, 'package_id')), None)
+                if package:
+                    package['package_items'] = []
+                return self.reply([])
+            rows_ = data if isinstance(data, list) else [data]
+            for row in rows_:
+                package = next((p for p in PACKAGES if p['id'] == row.get('package_id')), None)
+                if package:
+                    package['package_items'].append(row)
+            return self.reply(rows_, 201)
 
         if self.command == 'PATCH' and path == '/rest/v1/businesses':
             # Профиль бизнеса меняет владелец или менеджер (как правило в базе).

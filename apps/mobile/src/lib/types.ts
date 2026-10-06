@@ -27,6 +27,8 @@ export type Profile = {
   cover_path: string | null;
   accent_color: string | null;
   bio: string | null;
+  // Валюта показа цен (платят всегда в драмах).
+  currency?: Currency;
   // Чаты: когда был в сети и фон («preset:<id>» или «photo:<путь>»).
   last_seen_at: string | null;
   chat_wallpaper: string | null;
@@ -106,6 +108,8 @@ export type Order = {
   // Промокод и скидка на услуги (рекламный бюджет не уменьшается).
   promo_code: string | null;
   discount_amd: number;
+  // Заказ оформлен пакетом (миграция 0024).
+  package_id?: string | null;
   created_at: string;
 };
 
@@ -227,3 +231,18 @@ export type PromoCode = {
   active: boolean;
   created_at: string;
 };
+
+export type Currency = 'AMD' | 'USD' | 'EUR';
+
+// Пакет на месяц: набор услуг каталога с ценой за месяц.
+export type Package = {
+  id: string;
+  name: Localized;
+  description: Localized;
+  price_amd: number;
+  active: boolean;
+  sort_order: number;
+  package_items: PackageItem[];
+};
+
+export type PackageItem = { service_id: string; platform_id: string | null; quantity: number };

@@ -995,4 +995,36 @@ await as(CLIENT, 'select dismiss_task_idea($1)', [ideaIds[1]]);
 check('client dismisses an idea', (await as(CLIENT, 'select status from task_ideas where id = $1', [ideaIds[1]])).rows[0].status === 'dismissed');
 await fails('dismissed idea cannot be accepted', () => as(CLIENT, 'select accept_task_idea($1)', [ideaIds[1]]));
 
+// Пакеты на месяц и валюты.
+const pkgs = (await as(CLIENT, `select id, name ->> 'ru' as name, price_amd from packages order by sort_order`)).rows;
+check('client sees the active monthly packages', pkgs.length === 3 && pkgs[1].name === '12 постов в месяц');
+await fails('client cannot change packages', () => as(CLIENT, `update packages set price_amd = 1 returning id`).then(r => { if (!r.rows.length) throw new Error('no rows'); }));
+await fails('client cannot add package items', () => as(CLIENT, `insert into package_items (package_id, service_id, platform_id, quantity) values ($1, 'reel', 'instagram', 50)`, [pkgs[0].id]));
+const pkgOrderId = (await as(CLIENT, `select create_package_order($1, $2, 'team', 'с пакетом') as id`, [bizId, pkgs[1].id])).rows[0].id;
+const pkgOrder = (await as(CLIENT, 'select billing, items_total_amd, discount_amd, total_amd, package_id from orders where id = $1', [pkgOrderId])).rows[0];
+const pkgItems = (await as(CLIENT, `select service_id, quantity from order_items where order_id = $1 order by service_id`, [pkgOrderId])).rows;
+check('package becomes a monthly order at the package price with the rest as a discount',
+  pkgOrder.billing === 'monthly' && pkgOrder.total_amd === pkgs[1].price_amd && pkgOrder.package_id === pkgs[1].id &&
+  pkgOrder.discount_amd === pkgOrder.items_total_amd - pkgs[1].price_amd &&
+  pkgItems.map(i => `${i.service_id}:${i.quantity}`).join() === 'post:12,story:8');
+await fails('stranger cannot order a package for someone else', () => as(OTHER, `select create_package_order($1, $2, 'team')`, [bizId, pkgs[1].id]));
+await as(MANAGER, `update packages set price_amd = 999999 where id = $1`, [pkgs[0].id]);
+const cappedId = (await as(CLIENT, `select create_package_order($1, $2, 'team') as id`, [bizId, pkgs[0].id])).rows[0].id;
+const capped = (await as(CLIENT, 'select total_amd, items_total_amd from orders where id = $1', [cappedId])).rows[0];
+check('package never costs more than the same services in the catalog', capped.total_amd === capped.items_total_amd);
+const repeated = (await as(CLIENT, 'select repeat_order($1) as id', [pkgOrderId])).rows[0].id;
+check('repeating a package order keeps the package price',
+  (await as(CLIENT, 'select total_amd, package_id from orders where id = $1', [repeated])).rows[0].total_amd === pkgs[1].price_amd);
+await as(MANAGER, `update packages set active = false where id = $1`, [pkgs[2].id]);
+check('inactive package is hidden from clients but visible to managers',
+  (await as(CLIENT, 'select id from packages')).rows.length === 2 && (await as(MANAGER, 'select id from packages')).rows.length === 3);
+await fails('inactive package cannot be ordered', () => as(CLIENT, `select create_package_order($1, $2, 'team')`, [bizId, pkgs[2].id]));
+await as(CLIENT, `update profiles set currency = 'USD' where id = $1`, [CLIENT]);
+check('client chooses a currency', (await as(CLIENT, 'select currency from profiles where id = $1', [CLIENT])).rows[0].currency === 'USD');
+await fails('only AMD, USD and EUR', () => as(CLIENT, `update profiles set currency = 'RUB' where id = $1`, [CLIENT]));
+check('everyone reads exchange rates', Number((await as(CLIENT, 'select usd_rate_amd from agency_settings')).rows[0].usd_rate_amd) > 0);
+await fails('client cannot change exchange rates', () => as(CLIENT, `update agency_settings set usd_rate_amd = 1 returning id`).then(r => { if (!r.rows.length) throw new Error('no rows'); }));
+await as(ADMIN, `update agency_settings set usd_rate_amd = 385.5`);
+check('owner sets exchange rates', Number((await as(CLIENT, 'select usd_rate_amd from agency_settings')).rows[0].usd_rate_amd) === 385.5);
+
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

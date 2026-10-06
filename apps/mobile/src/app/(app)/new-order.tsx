@@ -3,16 +3,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Choice } from '@/components/Choice';
+import { PackagePicker, packagePrice } from '@/components/PackagePicker';
 import { Screen } from '@/components/Screen';
 import { Stepper } from '@/components/Stepper';
 import { colors } from '@/components/theme';
 import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
-import { formatAmd, localized } from '@/lib/format';
+import { localized } from '@/lib/format';
+import { useMoney } from '@/lib/money';
 import { promoDiscount, promoErrorKey, type AppliedPromo } from '@/lib/promo';
 import { serviceLabel } from '@/lib/platforms';
 import { supabase } from '@/lib/supabase';
-import type { BillingType, Platform, PlatformService, PublishingMode, Service } from '@/lib/types';
+import type { BillingType, Package, Platform, PlatformService, PublishingMode, Service } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
 const ADS_SERVICE_ID = 'ads_management';
@@ -24,6 +26,7 @@ type Catalog = { platforms: Platform[]; offers: PlatformService[]; services: Ser
 
 export default function NewOrderScreen() {
   const { t, language } = useI18n();
+  const { money, moneyToPay, currency } = useMoney();
   const { business } = useAuth();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
@@ -38,13 +41,24 @@ export default function NewOrderScreen() {
   const [checkingPromo, setCheckingPromo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [mode, setMode] = useState<'package' | 'custom'>('custom');
+  const [packageId, setPackageId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       supabase.from('platforms').select('*').eq('active', true).order('sort_order'),
       supabase.from('platform_services').select('*').eq('active', true),
       supabase.from('services').select('*').eq('active', true).order('sort_order'),
-    ]).then(([platforms, offers, services]) => {
+      supabase.from('packages').select('*, package_items(*)').eq('active', true).order('sort_order'),
+    ]).then(([platforms, offers, services, packageRows]) => {
+      const list = (packageRows.data as Package[] | null) ?? [];
+      setPackages(list);
+      // Есть пакеты — начинаем с них: так проще всего начать.
+      if (list.length) {
+        setMode('package');
+        setPackageId(list[0].id);
+      }
       setError(platforms.error?.message ?? offers.error?.message ?? services.error?.message ?? null);
       setCatalog({
         platforms: (platforms.data as Platform[] | null) ?? [],
@@ -138,6 +152,24 @@ export default function NewOrderScreen() {
     router.replace(`/orders/${data as string}`);
   };
 
+  const submitPackage = async () => {
+    if (!business || !packageId) return;
+    setError(null);
+    setSaving(true);
+    const { data, error } = await supabase.rpc('create_package_order', {
+      p_business_id: business.id,
+      p_package_id: packageId,
+      p_publishing: publishing,
+      p_notes: notes,
+    });
+    setSaving(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    router.replace(`/orders/${data as string}`);
+  };
+
   if (!catalog) {
     return (
       <View style={styles.center}>
@@ -159,7 +191,7 @@ export default function NewOrderScreen() {
             <Text style={styles.muted}>{localized(service.description, language)}</Text>
           ) : null}
           <Text style={styles.price}>
-            {formatAmd(price, language)} {t('order.perUnit')}
+            {money(price)} {t('order.perUnit')}
           </Text>
         </View>
         <Stepper
@@ -170,74 +202,105 @@ export default function NewOrderScreen() {
     );
   };
 
+  const chosen = packages.find((p) => p.id === packageId) ?? null;
+
   return (
     <Screen>
-      <Text style={styles.section}>{t('order.platformsTitle')}</Text>
-      <Text style={styles.muted}>{t('order.platformsHint')}</Text>
-      <View style={styles.chips}>
-        {catalog.platforms.map((p) => {
-          const active = selected.includes(p.id);
-          return (
+      {packages.length > 0 && (
+        <View style={styles.modes} accessibilityRole="tablist">
+          {(['package', 'custom'] as const).map((m) => (
             <Pressable
-              key={p.id}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: active }}
-              onPress={() => togglePlatform(p.id)}
-              style={[styles.chip, active && styles.chipActive]}>
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                {active ? '✓ ' : ''}
-                {p.name}
+              key={m}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: mode === m }}
+              onPress={() => setMode(m)}
+              style={[styles.mode, mode === m && styles.modeActive]}>
+              <Text style={[styles.modeText, mode === m && styles.modeTextActive]}>
+                {m === 'package' ? t('packages.monthly') : t('packages.custom')}
               </Text>
             </Pressable>
-          );
-        })}
-      </View>
-
-      {catalog.platforms
-        .filter((p) => selected.includes(p.id))
-        .map((p) => (
-          <Card key={p.id}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>{p.name}</Text>
-              <Text style={styles.muted}>{formatAmd(subtotal(p.id), language)}</Text>
-            </View>
-            {catalog.offers
-              .filter((o) => o.platform_id === p.id)
-              .sort(
-                (a, b) =>
-                  (serviceById.get(a.service_id)?.sort_order ?? 0) -
-                  (serviceById.get(b.service_id)?.sort_order ?? 0),
-              )
-              .map((o) => serviceRow(p.id, o.service_id, o.price_amd))}
-          </Card>
-        ))}
-
-      <Text style={styles.section}>{t('order.extraServices')}</Text>
-      <Card>
-        {catalog.services
-          .filter((s) => !s.per_platform)
-          .map((s) => serviceRow(null, s.id, s.price_amd))}
-      </Card>
-
-      {withAds && (
-        <Field
-          label={t('order.adBudget')}
-          hint={t('order.adBudgetHint')}
-          keyboardType="number-pad"
-          value={adBudget}
-          onChangeText={setAdBudget}
-        />
+          ))}
+        </View>
       )}
 
-      <Text style={styles.section}>{t('order.billing')}</Text>
-      <Choice
-        value={billing}
-        onChange={setBilling}
-        options={[
-          { value: 'one_time', label: t('order.oneTime') },
-          { value: 'monthly', label: t('order.monthly'), hint: t('order.monthlyHint') },
-        ]}
-      />
+      {mode === 'package' && (
+        <>
+          <Text style={styles.muted}>{t('packages.hint')}</Text>
+          <PackagePicker packages={packages} catalog={catalog} selected={packageId} onSelect={setPackageId} />
+        </>
+      )}
+
+      {mode === 'custom' && (
+        <>
+          <Text style={styles.section}>{t('order.platformsTitle')}</Text>
+          <Text style={styles.muted}>{t('order.platformsHint')}</Text>
+          <View style={styles.chips}>
+            {catalog.platforms.map((p) => {
+              const active = selected.includes(p.id);
+              return (
+                <Pressable
+                  key={p.id}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: active }}
+                  onPress={() => togglePlatform(p.id)}
+                  style={[styles.chip, active && styles.chipActive]}>
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                    {active ? '✓ ' : ''}
+                    {p.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {catalog.platforms
+            .filter((p) => selected.includes(p.id))
+            .map((p) => (
+              <Card key={p.id}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle}>{p.name}</Text>
+                  <Text style={styles.muted}>{money(subtotal(p.id))}</Text>
+                </View>
+                {catalog.offers
+                  .filter((o) => o.platform_id === p.id)
+                  .sort(
+                    (a, b) =>
+                      (serviceById.get(a.service_id)?.sort_order ?? 0) -
+                      (serviceById.get(b.service_id)?.sort_order ?? 0),
+                  )
+                  .map((o) => serviceRow(p.id, o.service_id, o.price_amd))}
+              </Card>
+            ))}
+
+          <Text style={styles.section}>{t('order.extraServices')}</Text>
+          <Card>
+            {catalog.services
+              .filter((s) => !s.per_platform)
+              .map((s) => serviceRow(null, s.id, s.price_amd))}
+          </Card>
+
+          {withAds && (
+            <Field
+              label={t('order.adBudget')}
+              hint={t('order.adBudgetHint')}
+              keyboardType="number-pad"
+              value={adBudget}
+              onChangeText={setAdBudget}
+            />
+          )}
+
+          <Text style={styles.section}>{t('order.billing')}</Text>
+          <Choice
+            value={billing}
+            onChange={setBilling}
+            options={[
+              { value: 'one_time', label: t('order.oneTime') },
+              { value: 'monthly', label: t('order.monthly'), hint: t('order.monthlyHint') },
+            ]}
+          />
+
+        </>
+      )}
 
       <Text style={styles.section}>{t('order.publishing')}</Text>
       <Choice
@@ -252,89 +315,112 @@ export default function NewOrderScreen() {
 
       <Field label={t('order.notes')} multiline value={notes} onChangeText={setNotes} />
 
-      <Card>
-        {promo ? (
+      {mode === 'package' && chosen && (
+        <Card>
           <View style={styles.totalRow}>
-            <Text style={styles.promoOk}>
-              🎟 {promo.code} ·{' '}
-              {t('promo.applied', {
-                value: promo.percent ? `${promo.percent}%` : formatAmd(promo.amount_amd ?? 0, language),
-              })}
-            </Text>
-            <Text
-              style={styles.link}
-              onPress={() => {
-                setPromo(null);
-                setPromoInput('');
-              }}>
-              {t('promo.remove')}
+            <Text style={styles.total}>{t('order.total')}</Text>
+            <Text style={styles.total}>
+              {moneyToPay(packagePrice(chosen, catalog))} {t('order.perMonth')}
             </Text>
           </View>
-        ) : (
-          <>
-            <Field
-              label={t('promo.field')}
-              hint="AUTUMN10"
-              autoCapitalize="characters"
-              autoCorrect={false}
-              value={promoInput}
-              onChangeText={(v) => {
-                setPromoInput(v);
-                setPromoError(null);
-              }}
-            />
-            <ErrorText>{promoError}</ErrorText>
-            <Button
-              title={t('promo.apply')}
-              variant="ghost"
-              onPress={applyPromo}
-              loading={checkingPromo}
-            />
-          </>
-        )}
-      </Card>
+          {currency !== 'AMD' && <Text style={styles.muted}>{t('money.payInAmd')}</Text>}
+          <Text style={styles.muted}>{t('packages.renewHint')}</Text>
+        </Card>
+      )}
 
-      <Card>
-        {catalog.platforms
-          .filter((p) => selected.includes(p.id) && subtotal(p.id) > 0)
-          .map((p) => (
-            <View key={p.id} style={styles.totalRow}>
-              <Text style={styles.muted}>{p.name}</Text>
-              <Text style={styles.muted}>{formatAmd(subtotal(p.id), language)}</Text>
+      {mode === 'custom' && (
+        <>
+          <Card>
+            {promo ? (
+              <View style={styles.totalRow}>
+                <Text style={styles.promoOk}>
+                  🎟 {promo.code} ·{' '}
+                  {t('promo.applied', {
+                    value: promo.percent ? `${promo.percent}%` : money(promo.amount_amd ?? 0),
+                  })}
+                </Text>
+                <Text
+                  style={styles.link}
+                  onPress={() => {
+                    setPromo(null);
+                    setPromoInput('');
+                  }}>
+                  {t('promo.remove')}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Field
+                  label={t('promo.field')}
+                  hint="AUTUMN10"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  value={promoInput}
+                  onChangeText={(v) => {
+                    setPromoInput(v);
+                    setPromoError(null);
+                  }}
+                />
+                <ErrorText>{promoError}</ErrorText>
+                <Button
+                  title={t('promo.apply')}
+                  variant="ghost"
+                  onPress={applyPromo}
+                  loading={checkingPromo}
+                />
+              </>
+            )}
+          </Card>
+
+          <Card>
+            {catalog.platforms
+              .filter((p) => selected.includes(p.id) && subtotal(p.id) > 0)
+              .map((p) => (
+                <View key={p.id} style={styles.totalRow}>
+                  <Text style={styles.muted}>{p.name}</Text>
+                  <Text style={styles.muted}>{money(subtotal(p.id))}</Text>
+                </View>
+              ))}
+            {subtotal(null) > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.muted}>{t('order.extraServices')}</Text>
+                <Text style={styles.muted}>{money(subtotal(null))}</Text>
+              </View>
+            )}
+            {withAds && (
+              <View style={styles.totalRow}>
+                <Text style={styles.muted}>{t('order.adBudget')}</Text>
+                <Text style={styles.muted}>{money(adBudgetAmd)}</Text>
+              </View>
+            )}
+            {discount > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.promoOk}>{t('promo.discount')}</Text>
+                <Text style={styles.promoOk}>−{money(discount)}</Text>
+              </View>
+            )}
+            <View style={styles.totalRow}>
+              <Text style={styles.total}>{t('order.total')}</Text>
+              <Text style={styles.total}>
+                {moneyToPay(total)}
+                {billing === 'monthly' ? ` ${t('order.perMonth')}` : ''}
+              </Text>
             </View>
-          ))}
-        {subtotal(null) > 0 && (
-          <View style={styles.totalRow}>
-            <Text style={styles.muted}>{t('order.extraServices')}</Text>
-            <Text style={styles.muted}>{formatAmd(subtotal(null), language)}</Text>
-          </View>
-        )}
-        {withAds && (
-          <View style={styles.totalRow}>
-            <Text style={styles.muted}>{t('order.adBudget')}</Text>
-            <Text style={styles.muted}>{formatAmd(adBudgetAmd, language)}</Text>
-          </View>
-        )}
-        {discount > 0 && (
-          <View style={styles.totalRow}>
-            <Text style={styles.promoOk}>{t('promo.discount')}</Text>
-            <Text style={styles.promoOk}>−{formatAmd(discount, language)}</Text>
-          </View>
-        )}
-        <View style={styles.totalRow}>
-          <Text style={styles.total}>{t('order.total')}</Text>
-          <Text style={styles.total}>
-            {formatAmd(total, language)}
-            {billing === 'monthly' ? ` ${t('order.perMonth')}` : ''}
-          </Text>
-        </View>
-        {discount > 0 && billing === 'monthly' && (
-          <Text style={styles.muted}>{t('promo.firstMonthOnly')}</Text>
-        )}
-      </Card>
+            {currency !== 'AMD' && <Text style={styles.muted}>{t('money.payInAmd')}</Text>}
+            {discount > 0 && billing === 'monthly' && (
+              <Text style={styles.muted}>{t('promo.firstMonthOnly')}</Text>
+            )}
+          </Card>
+
+        </>
+      )}
 
       <ErrorText>{error}</ErrorText>
-      <Button title={t('order.toPayment')} onPress={submit} loading={saving} />
+      <Button
+        title={t('order.toPayment')}
+        onPress={mode === 'package' ? submitPackage : submit}
+        loading={saving}
+      />
     </Screen>
   );
 }
@@ -342,6 +428,17 @@ export default function NewOrderScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   section: { fontSize: 18, fontWeight: '600', color: colors.text, marginTop: 8 },
+  modes: {
+    flexDirection: 'row',
+    padding: 4,
+    gap: 4,
+    borderRadius: 14,
+    backgroundColor: colors.border,
+  },
+  mode: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 8 },
+  modeActive: { backgroundColor: colors.surface },
+  modeText: { fontSize: 15, color: colors.muted, textAlign: 'center' },
+  modeTextActive: { color: colors.text, fontWeight: '600' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 16,
