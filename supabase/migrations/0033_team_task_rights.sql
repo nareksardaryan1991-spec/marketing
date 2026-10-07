@@ -55,13 +55,19 @@ returns void
 language plpgsql
 security definer set search_path = ''
 as $$
+declare
+  v_task public.tasks := public.team_task_for_edit(p_task_id);
 begin
-  perform public.team_task_for_edit(p_task_id);
   if nullif(trim(p_title), '') is null then
     raise exception 'title is required';
   end if;
-  perform public.check_team_assignee(p_assignee_id);
-  perform public.check_team_assignee(p_reviewer_id);
+  -- Проверяем только смену: если владелец сам взял задачу, автор по-прежнему может её править.
+  if p_assignee_id is distinct from v_task.assignee_id then
+    perform public.check_team_assignee(p_assignee_id);
+  end if;
+  if p_reviewer_id is distinct from v_task.reviewer_id then
+    perform public.check_team_assignee(p_reviewer_id);
+  end if;
 
   update public.tasks
      set title = trim(p_title),

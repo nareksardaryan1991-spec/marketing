@@ -1213,6 +1213,12 @@ const ownerSelf = (await as(ADMIN, fullArgs, ['Себе', null, ADMIN, null, nul
 check('the owner can take a task', (await as(ADMIN, 'select assignee_id from tasks where id = $1', [ownerSelf])).rows[0].assignee_id === ADMIN);
 await as(ADMIN, 'select delete_team_task($1)', [ownerSelf]);
 
+const ownerTook = (await as(MANAGER2, fullArgs, ['Владелец возьмёт', null, EMPLOYEE, null, null, []])).rows[0].id;
+await as(ADMIN, 'select update_team_task($1, $2, null, $3, null, $4, null, null, $5)', [ownerTook, 'Владелец возьмёт', ADMIN, 'normal', ADMIN]);
+await as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4)', [ownerTook, 'Владелец взял', ADMIN, 'normal']);
+check('the author still edits a task the owner took (the owner is checked only when changed)',
+  (await as(ADMIN, 'select title, assignee_id from tasks where id = $1', [ownerTook])).rows[0].title === 'Владелец взял');
+await fails('but cannot newly make the owner the reviewer of another task', () => as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4, null, null, $5)', [privTask, 'Тайная задача', EMPLOYEE, 'normal', ADMIN]));
 await as(MANAGER, `update tasks set title = 'Взлом', due_date = '2000-01-01' where id = $1`, [privTask]);
 await as(MANAGER, `update tasks set assignee_id = $2 where id = $1`, [task2, MANAGER]);
 check('nobody changes task rows directly, only through functions',

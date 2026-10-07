@@ -423,6 +423,12 @@ export const en: Translations = {
     description: 'Description',
     descriptionHint: 'What to do and what to pay attention to',
     assignee: 'Assignee',
+    reviewer: 'Reviewer',
+    reviewerHint: 'Who accepts the work. By default, the author of the task.',
+    reviewerAuthor: 'Task author',
+    watchers: 'Who can see',
+    watchersHint: 'The author, the assignee and the reviewer always see the task; the owner sees all tasks. Tick anyone else who should see it.',
+    alwaysSees: 'Always sees',
     priorityTitle: 'Priority',
     priority: {
       low: 'Low',

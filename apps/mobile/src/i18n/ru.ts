@@ -421,6 +421,12 @@ export const ru = {
     description: 'Описание',
     descriptionHint: 'Что сделать и на что обратить внимание',
     assignee: 'Исполнитель',
+    reviewer: 'Проверяющий',
+    reviewerHint: 'Кто принимает работу. По умолчанию — автор задачи.',
+    reviewerAuthor: 'Автор задачи',
+    watchers: 'Кто видит',
+    watchersHint: 'Автор, исполнитель и проверяющий видят задачу всегда, владелец — все задачи. Отметьте, кому ещё её показать.',
+    alwaysSees: 'Видит всегда',
     priorityTitle: 'Важность',
     priority: {
       low: 'Низкая',

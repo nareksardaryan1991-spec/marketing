@@ -251,7 +251,7 @@ def team_task(n, title, status, assignee, priority='normal', due=None, brief=Non
         'due_date': due, 'brief': brief, 'publish_at': None, 'published_at': None, 'published_url': None,
         'publish_error': None, 'autopublish_state': {}, 'created_at': day(-3), 'updated_at': day(-1),
         'client_review_since': None, 'services': None, 'businesses': business, 'orders': None,
-        'deliverables': deliverables, 'from_agent_run_id': None, 'draft_agent': None,
+        'deliverables': deliverables, 'from_agent_run_id': None, 'draft_agent': None, 'reviewer_id': creator,
     }
 
 
@@ -821,7 +821,7 @@ def start_agent(data):
         run['order_id'] = data['order_id']
     else:
         task = next((t for t in visible_tasks() if t['id'] == data.get('task_id')), None)
-        if not task or not (task['assignee_id'] == profile['id'] or is_manager(profile['role'])):
+        if not task or not (task['assignee_id'] == profile['id'] or (is_manager(profile['role']) and task['kind'] == 'order')):
             return None, 'task not found'
         if task['status'] not in ('new', 'assigned', 'in_progress', 'changes_requested'):
             return None, 'task is not in progress'
@@ -887,7 +887,7 @@ def attach_run(data):
     if not run['chat'] or run['status'] != 'done' or run['deliverable_id']:
         return 'this result cannot be attached'
     task = next((t for t in visible_tasks() if t['id'] == data.get('task_id')), None)
-    if not task or not (task['assignee_id'] == profile['id'] or is_manager(profile['role'])):
+    if not task or not (task['assignee_id'] == profile['id'] or (is_manager(profile['role']) and task['kind'] == 'order')):
         return 'task not found'
     if task['status'] not in ('new', 'assigned', 'in_progress', 'changes_requested'):
         return 'task is not in progress'
@@ -957,26 +957,80 @@ def find_task(task_id):
     return next((t for t in TASKS if t['id'] == task_id), None)
 
 
-# Работа над задачей и задачи команды — те же проверки, что в базе (0003, 0025, 0028).
+# «Кто видит» и история задач команды (0032, 0034).
+# Демо: менеджер отмечен в задаче владельца — видит её, но менять не может.
+TASK_WATCHERS = [{'task_id': 't1000000-0000-4000-8000-000000000002', 'user_id': MANAGER}]
+TASK_HISTORY = []
+
+
+def sees_team(t, profile):
+    return t['kind'] == 'team' and (
+        profile['role'] == 'admin' or profile['id'] in (t['created_by'], t['assignee_id'], t.get('reviewer_id'))
+        or any(w['task_id'] == t['id'] and w['user_id'] == profile['id'] for w in TASK_WATCHERS))
+
+
+# Менять задачу команды — автор (пока он менеджер) и владелец (0033).
+def can_edit_team(t, profile):
+    return t['kind'] == 'team' and (
+        profile['role'] == 'admin' or (t['created_by'] == profile['id'] and is_manager(profile['role'])))
+
+
+def log_history(task_id, field, old, new):
+    if old != new:
+        TASK_HISTORY.append({'id': 'h%d' % (len(TASK_HISTORY) + 1), 'task_id': task_id, 'actor_id': me()['id'],
+                             'field': field, 'old_value': old, 'new_value': new, 'created_at': now_iso()})
+
+
+def set_status(task_, status):
+    if task_['kind'] == 'team':
+        log_history(task_['id'], 'status', task_['status'], status)
+    task_['status'] = status
+
+
+def set_watchers(task_, ids, log=True):
+    old = sorted(w['user_id'] for w in TASK_WATCHERS if w['task_id'] == task_['id'])
+    new = sorted({i for i in ids if by_id(i) and by_id(i)['role'] != 'admin'})
+    TASK_WATCHERS[:] = [w for w in TASK_WATCHERS if w['task_id'] != task_['id']]
+    TASK_WATCHERS.extend({'task_id': task_['id'], 'user_id': i} for i in new)
+    if log:
+        log_history(task_['id'], 'watchers', old, new)
+
+
+# Работа над задачей и задачи команды — те же проверки, что в базе (0003, 0025, 0028, 0032–0034).
 def task_rpc(fn, data):
     profile = me()
     manager = is_manager(profile['role'])
     if fn in ('create_team_task', 'update_team_task'):
-        if not manager:
-            return None, 'only managers can change team tasks'
+        task_ = None
+        if fn == 'create_team_task':
+            if not manager:
+                return None, 'only managers can create team tasks'
+        else:
+            task_ = find_task(data.get('p_task_id'))
+            if not task_ or not sees_team(task_, profile):
+                return None, 'task not found'
+            if not can_edit_team(task_, profile):
+                return None, 'only the author or the owner can change the task'
         title = (data.get('p_title') or '').strip()
         if not title:
             return None, 'title is required'
         assignee = data.get('p_assignee_id')
-        if assignee and not (by_id(assignee) and is_employee(by_id(assignee)['role'])):
-            return None, 'assignee must be a team member'
+        reviewer = data.get('p_reviewer_id') or (task_['reviewer_id'] if task_ else profile['id'])
+        for person, old in ((assignee, task_ and task_['assignee_id']), (reviewer, task_ and task_['reviewer_id'])):
+            if person and not (by_id(person) and is_employee(by_id(person)['role'])):
+                return None, 'assignee must be a team member'
+            if person and person != old and by_id(person)['role'] == 'admin' and profile['role'] != 'admin':
+                return None, 'only the owner can give a task to the owner'
+        watchers = data.get('p_watchers')
+        if watchers and any(not (by_id(w) and is_employee(by_id(w)['role'])) for w in watchers):
+            return None, 'watchers must be team members'
         order = next((o for o in ORDERS if o['id'] == data.get('p_order_id')), None)
         business_id = order['business_id'] if order else data.get('p_business_id')
         business = next((b for b in BUSINESSES if b['id'] == business_id), None)
         fields = {'title': title, 'brief': (data.get('p_description') or '').strip() or None, 'assignee_id': assignee,
                   'due_date': data.get('p_due_date'), 'priority': data.get('p_priority') or 'normal',
                   'business_id': business['id'] if business else None, 'businesses': business,
-                  'related_order_id': order['id'] if order else None, 'updated_at': now_iso()}
+                  'related_order_id': order['id'] if order else None, 'reviewer_id': reviewer, 'updated_at': now_iso()}
         if fn == 'create_team_task':
             run = None
             if data.get('p_from_run_id'):
@@ -990,37 +1044,43 @@ def task_rpc(fn, data):
                 new.update(from_agent_run_id=run['id'], draft_agent=run['agent'])
             new['created_at'] = now_iso()
             TASKS.append(new)
+            set_watchers(new, watchers or [], log=False)
+            log_history(new['id'], 'created', None, title)
             return new['id'], None
-        task_ = find_task(data.get('p_task_id'))
-        if not task_ or task_['kind'] != 'team':
-            return None, 'task not found'
         if task_['status'] == 'new' and assignee:
             fields['status'] = 'assigned'
         elif task_['status'] == 'assigned' and not assignee:
             fields['status'] = 'new'
+        for key in ('title', 'brief', 'due_date', 'priority', 'status', 'assignee_id', 'reviewer_id', 'related_order_id'):
+            if key in fields:
+                log_history(task_['id'], key, task_.get(key), fields[key])
+        log_history(task_['id'], 'business', (task_.get('businesses') or {}).get('name'), business and business['name'])
         task_.update(fields)
+        if watchers is not None:
+            set_watchers(task_, watchers)
         return None, None
     task_ = find_task(data.get('p_task_id'))
     visible = task_ and task_['id'] in {t['id'] for t in visible_tasks()}
     if not visible:
         return None, 'task not found'
     if fn == 'set_team_task_attachments':
-        if not manager or task_['kind'] != 'team':
-            return None, 'task not found'
+        if not can_edit_team(task_, profile):
+            return None, 'only the author or the owner can change the task'
+        log_history(task_['id'], 'attachments', task_['attachments'], data.get('p_files') or [])
         task_['attachments'] = data.get('p_files') or []
         return None, None
     if fn == 'delete_team_task':
-        if not manager or task_['kind'] != 'team':
-            return None, 'task not found'
+        if not can_edit_team(task_, profile):
+            return None, 'only the author or the owner can change the task'
         TASKS.remove(task_)
         return None, None
     if fn == 'start_task':
         if task_['assignee_id'] != profile['id'] or task_['status'] != 'assigned':
             return None, 'task cannot be started'
-        task_['status'] = 'in_progress'
+        set_status(task_, 'in_progress')
         return None, None
     if fn == 'submit_deliverable':
-        if not (task_['assignee_id'] == profile['id'] or manager):
+        if not (task_['assignee_id'] == profile['id'] or (manager and task_['kind'] == 'order')):
             return None, 'task not found'
         if task_['status'] not in ('assigned', 'in_progress', 'changes_requested'):
             return None, 'task is not in progress'
@@ -1033,20 +1093,21 @@ def task_rpc(fn, data):
             'id': '%s-v%d' % (task_['id'], version), 'task_id': task_['id'], 'version': version, 'caption': caption,
             'files': files, 'note': (data.get('p_note') or '').strip() or None, 'created_by': profile['id'],
             'created_at': now_iso(), 'sent_to_client_at': None, 'reviewer_name': None})
-        task_['status'] = 'internal_review'
+        set_status(task_, 'internal_review')
         return None, None
     if fn == 'review_task':
         approve, comment = data.get('p_approve'), (data.get('p_comment') or '').strip()
-        if not manager:
-            return None, 'only managers can review tasks'
+        reviewer = (task_.get('reviewer_id') == profile['id'] or profile['role'] == 'admin') if task_['kind'] == 'team' else manager
+        if not reviewer:
+            return None, 'only the reviewer can review this task'
         if task_['kind'] == 'team' and not approve and not comment:
             return None, 'comment is required to return the task'
         if task_['status'] != 'internal_review':
             return None, 'task is not waiting for review'
         if not approve:
-            task_['status'] = 'in_progress'
+            set_status(task_, 'in_progress')
         elif task_['kind'] == 'team':
-            task_['status'] = 'approved'
+            set_status(task_, 'approved')
         else:
             task_['status'] = 'client_review'
             task_['client_review_since'] = now_iso()
@@ -1086,12 +1147,11 @@ def my_order_ids():
 
 def visible_tasks():
     profile = me()
+    # Задачи команды — автор, исполнитель, проверяющий, отмеченные и владелец (0032); клиент — никакие.
     if own_tasks_only(profile['role']):
-        return [t for t in TASKS if t['assignee_id'] == profile['id']]
+        return [t for t in TASKS if (t['kind'] == 'order' and t['assignee_id'] == profile['id']) or sees_team(t, profile)]
     ids = my_order_ids()
-    # Задачи команды (без заказа): штат видит все, остальные — только свои, клиент — никакие.
-    return [t for t in TASKS if t['order_id'] in ids or
-            (t['kind'] == 'team' and (is_team(profile['role']) or t['assignee_id'] == profile['id']))]
+    return [t for t in TASKS if (t['kind'] == 'order' and t['order_id'] in ids) or sees_team(t, profile)]
 
 
 def in_filter(q, key):
@@ -1244,6 +1304,11 @@ def rows(table, q):
     if table == 'deleted_chat_messages':
         cid = eq(q, 'chat_id')
         return [d for d in DELETED.values() if d['chat_id'] == cid] if role == 'admin' else []
+    if table in ('task_watchers', 'task_history'):
+        visible = {t['id'] for t in visible_tasks()}
+        tid = eq(q, 'task_id')
+        source = TASK_WATCHERS if table == 'task_watchers' else TASK_HISTORY
+        return [r for r in source if r['task_id'] in visible and (not tid or r['task_id'] == tid)]
     if table == 'task_comments':
         if not is_employee(role):
             return []

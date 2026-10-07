@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
 import { agentLabel } from '@/components/agents/AgentAvatar';
-import { Choice } from '@/components/Choice';
+import { CheckList, Choice } from '@/components/Choice';
 import { DateTimeField } from '@/components/DateTimeField';
 import { Screen } from '@/components/Screen';
 import { colors } from '@/components/theme';
@@ -15,21 +15,31 @@ import { copyDraftFiles, loadAgentDraft, type AgentDraft } from '@/lib/handoff';
 import { roleLabel } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import type { OrderStatus, Profile, Task, TaskPriority } from '@/lib/types';
+import { useAuth } from '@/providers/AuthProvider';
 
 const NONE = '';
 const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'urgent'];
 
 type OrderRow = { id: string; created_at: string; status: OrderStatus };
 
-// Новая задача команды или изменение существующей (?id=). Ставят владелец и менеджеры.
+// Новая задача команды или изменение существующей (?id=). Ставят владелец и менеджеры, меняют автор и владелец.
+// Исполнитель и проверяющий — люди команды; владельца выбирает только сам владелец (так же проверяет база).
+// «Кто видит»: автор, исполнитель и проверяющий видят задачу всегда, владелец — все задачи; остальных отмечают.
 // ?from_run= — «Передать человеку»: задача из работы AI-агента, черновик прикрепляется к ней.
 export default function TeamTaskEditScreen() {
   const params = useLocalSearchParams<{ id?: string; from_run?: string }>();
   const { t, language } = useI18n();
+  const { profile } = useAuth();
+  const isOwner = profile?.role === 'admin';
   const editing = !!params.id;
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignee, setAssignee] = useState(NONE);
+  // Проверяющий: NONE — автор задачи.
+  const [reviewer, setReviewer] = useState(NONE);
+  const [watchers, setWatchers] = useState<string[]>([]);
+  // Автор: у новой задачи — тот, кто ставит; у существующей — из задачи.
+  const [authorId, setAuthorId] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [business, setBusiness] = useState(NONE);
@@ -73,6 +83,8 @@ export default function TeamTaskEditScreen() {
         setTitle(data.title ?? '');
         setDescription(data.brief ?? '');
         setAssignee(data.assignee_id ?? NONE);
+        setAuthorId(data.created_by);
+        setReviewer(data.reviewer_id && data.reviewer_id !== data.created_by ? data.reviewer_id : NONE);
         // due_date — день без времени: собираем локальную дату, чтобы не сдвинул часовой пояс.
         if (data.due_date) {
           const [y, m, d] = data.due_date.split('-').map(Number);
@@ -82,6 +94,11 @@ export default function TeamTaskEditScreen() {
         setBusiness(data.business_id ?? NONE);
         setOrder(data.related_order_id ?? NONE);
       });
+    supabase
+      .from('task_watchers')
+      .select('user_id')
+      .eq('task_id', params.id)
+      .then(({ data }) => setWatchers((data ?? []).map((w) => w.user_id as string)));
   }, [params.id]);
 
   // «Передать человеку»: название, описание с текстом черновика, клиент и заказ исходной работы.
@@ -119,6 +136,14 @@ export default function TeamTaskEditScreen() {
 
   const orders = business && ordersOf.business === business ? ordersOf.rows : [];
 
+  const author = editing ? authorId : (profile?.id ?? null);
+  const nameOf = (person: Profile) => person.full_name || person.email || person.id.slice(0, 8);
+  const authorName = people.find((p) => p.id === author);
+  // Кому можно дать задачу или проверку: менеджер не выбирает владельца (но видит, если владелец уже выбран).
+  const choosable = people.filter((p) => isOwner || p.role !== 'admin' || p.id === assignee || p.id === reviewer);
+  // Видят всегда — галочку не снять.
+  const always = new Set([author, assignee || null, reviewer || author].filter(Boolean) as string[]);
+
   const save = async () => {
     if (createdId) {
       router.replace(`/tasks/${createdId}`);
@@ -138,6 +163,9 @@ export default function TeamTaskEditScreen() {
       p_priority: priority,
       p_business_id: business || null,
       p_order_id: order || null,
+      // «Автор» — у существующей задачи передаём автора явно (вернуть проверку автору).
+      p_reviewer_id: reviewer || (editing ? authorId : null),
+      p_watchers: watchers.filter((id) => !always.has(id)),
     };
     const result = editing
       ? await supabase.rpc('update_team_task', { p_task_id: params.id, ...fields })
@@ -201,12 +229,48 @@ export default function TeamTaskEditScreen() {
           onChange={setAssignee}
           options={[
             { value: NONE, label: t('task.unassigned') },
-            ...people.map((person) => ({
+            ...choosable.map((person) => ({
               value: person.id,
-              label: person.full_name || person.email || person.id.slice(0, 8),
+              label: nameOf(person),
               hint: roleLabel(t, person),
             })),
           ]}
+        />
+      </Card>
+
+      <Card>
+        <Text style={styles.cardTitle}>{t('teamTasks.reviewer')}</Text>
+        <Text style={styles.hint}>{t('teamTasks.reviewerHint')}</Text>
+        <Choice
+          value={reviewer}
+          onChange={setReviewer}
+          options={[
+            {
+              value: NONE,
+              label: t('teamTasks.reviewerAuthor'),
+              hint: authorName ? nameOf(authorName) : undefined,
+            },
+            ...choosable
+              .filter((person) => person.id !== author)
+              .map((person) => ({ value: person.id, label: nameOf(person), hint: roleLabel(t, person) })),
+          ]}
+        />
+      </Card>
+
+      <Card>
+        <Text style={styles.cardTitle}>{t('teamTasks.watchers')}</Text>
+        <Text style={styles.hint}>{t('teamTasks.watchersHint')}</Text>
+        <CheckList
+          value={watchers}
+          onChange={setWatchers}
+          options={people
+            .filter((person) => person.role !== 'admin')
+            .map((person) => ({
+              value: person.id,
+              label: nameOf(person),
+              hint: always.has(person.id) ? t('teamTasks.alwaysSees') : roleLabel(t, person),
+              locked: always.has(person.id),
+            }))}
         />
       </Card>
 
