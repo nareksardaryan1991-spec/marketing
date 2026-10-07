@@ -35,7 +35,36 @@ export type ChatMessage = {
   deleted_at: string | null;
   // Сообщение-звонок: комната Jitsi и аудио/видео.
   call: { room: string; video: boolean } | null;
+  // Служебная строка группы («создал(а) группу», «добавил(а) …») — пишет только сервер.
+  event?: GroupEvent | null;
 };
+
+export type GroupEvent = {
+  type: 'created' | 'renamed' | 'photo' | 'photo_removed' | 'added' | 'removed' | 'left';
+  title?: string;
+  users?: string[];
+  names?: string[];
+};
+
+// Участник группы (chat_info.member_list).
+export type GroupMember = {
+  id: string;
+  name: string;
+  avatar_path: string | null;
+  accent_color: string | null;
+  role: UserRole;
+  job_title: string | null;
+  last_seen_at: string | null;
+};
+
+// Текст служебной строки: «Нарек добавил(а) Ани, Гора».
+export function groupEventText(event: GroupEvent, author: string, t: (key: string, o?: Record<string, unknown>) => string) {
+  return t(`chats.groupEvents.${event.type}`, {
+    author,
+    title: event.title ?? '',
+    names: (event.names ?? []).join(', '),
+  });
+}
 
 export type Reaction = { message_id: string; user_id: string; user_name: string; emoji: string };
 
@@ -43,7 +72,14 @@ export type Reaction = { message_id: string; user_id: string; user_name: string;
 export type DeletedOriginal = { message_id: string; body: string; attachments: Attachment[] };
 
 export type ChatInfo = {
+  // Вид чата: заказ, общий чат команды, личная беседа или группа.
+  kind?: 'order' | 'team' | 'direct' | 'group';
   title: string | null;
+  // Группа: фото, участники, создатель и можно ли текущему человеку ею управлять.
+  avatar_path?: string | null;
+  member_list?: GroupMember[] | null;
+  created_by?: string | null;
+  can_manage?: boolean;
   pinned: { id: string; body: string; attachments: Attachment[]; author_name: string } | null;
   peer: {
     id?: string;
@@ -60,7 +96,7 @@ export type ChatInfo = {
 export type ChatListItem = {
   chat: ChatKind;
   id: string;
-  kind: 'order' | 'team' | 'direct';
+  kind: 'order' | 'team' | 'direct' | 'group';
   title: string | null;
   business_name: string | null;
   order_created_at: string | null;
@@ -76,6 +112,7 @@ export type ChatListItem = {
   last_deleted: boolean;
   unread: number;
   others_read_at: string | null;
+  last_event?: GroupEvent | null;
 };
 
 export const REACTIONS = ['👍', '❤️', '🔥', '😂', '😮', '😢', '🙏', '👏'];

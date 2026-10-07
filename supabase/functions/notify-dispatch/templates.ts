@@ -101,7 +101,7 @@ const T: Record<string, Record<Lang, Template>> = {
   },
   group_added: {
     ru: (v) => `👥 ${v.author} добавил(а) вас в группу «${v.title}»`,
-    hy: (v) => `👥 ${v.author}-ը ձեզ ավելացրել է «${v.title}» խմբին`,
+    hy: (v) => `👥 Ձեզ ավելացրել են «${v.title}» խմբին (${v.author})`,
     en: (v) => `👥 ${v.author} added you to the group "${v.title}"`,
   },
   incoming_call: {

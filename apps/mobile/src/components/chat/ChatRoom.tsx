@@ -21,6 +21,7 @@ import {
   chatFileUrls,
   dayLabel,
   daysAgo,
+  groupEventText,
   isOnline,
   lastSeenText,
   messagePreview,
@@ -118,10 +119,14 @@ export function ChatRoom({ chat, id, embedded }: ChatRef & { embedded?: boolean 
     : undefined;
 
   // ---------- Шапка ----------
-  const teamGeneral = chat === 'team' && info?.members != null;
-  const direct = chat === 'team' && !teamGeneral;
+  // Общий чат команды, группа или личная беседа (вид — из chat_info).
+  const group = chat === 'team' && info?.kind === 'group';
+  const teamGeneral = chat === 'team' && !group && info?.members != null;
+  const direct = chat === 'team' && !teamGeneral && !group;
   const title = teamGeneral
     ? t('teamChat.general')
+    : group
+      ? (info?.title ?? '')
     : chat === 'order' && isClient
       ? t('chats.agency')
       : (info?.title ?? '');
@@ -133,19 +138,19 @@ export function ChatRoom({ chat, id, embedded }: ChatRef & { embedded?: boolean 
     ? direct
       ? t('chats.typing')
       : t('chats.typingName', { name: room.typingNames[0] })
-    : teamGeneral
+    : teamGeneral || group
       ? t('chats.members', { count: info?.members ?? 0 })
       : info
         ? peerOnline
           ? t('chats.online')
           : lastSeenText(info.peer?.last_seen_at, language, t)
         : '';
-  const subtitleActive = room.typingNames.length > 0 || (!teamGeneral && peerOnline);
+  const subtitleActive = room.typingNames.length > 0 || (!teamGeneral && !group && peerOnline);
   const header = (
     <View style={styles.headerTitle}>
       <Avatar
-        name={teamGeneral ? '👥' : title || '?'}
-        path={teamGeneral || isClient ? null : info?.peer?.avatar_path}
+        name={teamGeneral || (group && !info?.avatar_path) ? '👥' : title || '?'}
+        path={teamGeneral || isClient ? null : group ? info?.avatar_path : info?.peer?.avatar_path}
         size={36}
       />
       <View style={styles.headerText}>
@@ -333,30 +338,39 @@ export function ChatRoom({ chat, id, embedded }: ChatRef & { embedded?: boolean 
             <Text style={styles.dayText}>{dayLabel(item.created_at, language, t)}</Text>
           </View>
         )}
-        <MessageBubble
-          message={item}
-          mine={mine}
-          showAuthor={!mine && !direct && firstInGroup}
-          authorLabel={authorLabel(item)}
-          authorColor={nameColor(item.author_id)}
-          replyTo={reply}
-          replyAuthor={reply ? authorLabel(reply) : ''}
-          reactions={reactionGroups.get(item.id) ?? []}
-          read={!!info?.others_read_at && info.others_read_at >= item.created_at}
-          original={deleted[item.id]}
-          urls={urls}
-          highlighted={highlight === item.id}
-          onMenu={setMenuFor}
-          onReact={onReact}
-          onOpenPhoto={(photos, i) => setViewer({ photos, index: i })}
-          onJumpTo={jumpTo}
-          onJoinCall={joinCall}
-          onSwipeReply={(m) => {
-            if (m.deleted_at) return;
-            setEditing(null);
-            setReplyTo(m);
-          }}
-        />
+        {/* Служебная строка группы — по центру, как дата; меню и реакций у неё нет. */}
+        {item.event ? (
+          <View style={[styles.dayPill, styles.eventPill]}>
+            <Text style={[styles.dayText, styles.eventText]}>
+              {groupEventText(item.event, item.author_name, t)}
+            </Text>
+          </View>
+        ) : (
+          <MessageBubble
+            message={item}
+            mine={mine}
+            showAuthor={!mine && !direct && firstInGroup}
+            authorLabel={authorLabel(item)}
+            authorColor={nameColor(item.author_id)}
+            replyTo={reply}
+            replyAuthor={reply ? authorLabel(reply) : ''}
+            reactions={reactionGroups.get(item.id) ?? []}
+            read={!!info?.others_read_at && info.others_read_at >= item.created_at}
+            original={deleted[item.id]}
+            urls={urls}
+            highlighted={highlight === item.id}
+            onMenu={setMenuFor}
+            onReact={onReact}
+            onOpenPhoto={(photos, i) => setViewer({ photos, index: i })}
+            onJumpTo={jumpTo}
+            onJoinCall={joinCall}
+            onSwipeReply={(m) => {
+              if (m.deleted_at) return;
+              setEditing(null);
+              setReplyTo(m);
+            }}
+          />
+        )}
       </View>
     );
   };
@@ -549,6 +563,8 @@ const styles = StyleSheet.create({
     backgroundColor: chatColors.pillBackground,
   },
   dayText: { color: chatColors.pillText, fontSize: 13, fontWeight: '600' },
+  eventPill: { maxWidth: '85%' },
+  eventText: { textAlign: 'center', fontWeight: '500' },
   down: {
     position: 'absolute',
     right: 16,

@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/Avatar';
+import { CheckList } from '@/components/Choice';
 import { EmptyState } from '@/components/EmptyState';
 import { ChatRoom } from '@/components/chat/ChatRoom';
 import { ChatRow, chatTitle } from '@/components/chat/ChatRow';
@@ -38,6 +39,10 @@ export default function ChatsScreen() {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<ChatRef | null>(null);
   const [colleagues, setColleagues] = useState<Profile[] | null>(null);
+  // Новая группа: название и отмеченные коллеги (null — выбираем, кому написать лично).
+  const [newGroup, setNewGroup] = useState<{ title: string; members: string[] } | null>(null);
+  const [groupError, setGroupError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -68,9 +73,30 @@ export default function ChatsScreen() {
     else setColleagues((data as Profile[] | null) ?? []);
   };
 
+  const closePicker = () => {
+    setColleagues(null);
+    setNewGroup(null);
+    setGroupError(null);
+  };
+
+  const createGroup = async () => {
+    if (!newGroup) return;
+    if (!newGroup.title.trim()) return setGroupError(t('chats.groupNameRequired'));
+    if (newGroup.members.length === 0) return setGroupError(t('chats.groupMembersRequired'));
+    setCreating(true);
+    const { data, error } = await supabase.rpc('create_group_chat', {
+      p_title: newGroup.title,
+      p_members: newGroup.members,
+    });
+    setCreating(false);
+    if (error) return setGroupError(error.message);
+    closePicker();
+    open({ chat: 'team', id: data as string });
+  };
+
   const openDirect = async (userId: string) => {
     const { data, error } = await supabase.rpc('open_direct_conversation', { p_user_id: userId });
-    setColleagues(null);
+    closePicker();
     if (error) setError(error.message);
     else open({ chat: 'team', id: data as string });
   };
@@ -156,25 +182,83 @@ export default function ChatsScreen() {
         list
       )}
 
-      <Modal transparent animationType="fade" visible={!!colleagues} onRequestClose={() => setColleagues(null)}>
-        <Pressable style={styles.backdrop} onPress={() => setColleagues(null)}>
+      <Modal transparent animationType="fade" visible={!!colleagues} onRequestClose={closePicker}>
+        <Pressable style={styles.backdrop} onPress={closePicker}>
           <Pressable style={styles.sheet} onPress={() => {}}>
-            <Text style={styles.sheetTitle}>{t('teamChat.pickColleague')}</Text>
-            <ScrollView>
-              {(colleagues ?? []).map((person) => (
-                <Pressable
-                  key={person.id}
-                  accessibilityRole="button"
-                  onPress={() => openDirect(person.id)}
-                  style={({ pressed }) => [styles.person, pressed && styles.personPressed]}>
-                  <Avatar name={person.full_name || person.email || '?'} path={person.avatar_path} color={person.accent_color} size={40} />
-                  <View style={styles.personText}>
-                    <Text style={styles.personName}>{person.full_name || person.email}</Text>
-                    <Text style={styles.personRole}>{roleLabel(t, person)}</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
+            {newGroup ? (
+              <>
+                <Text style={styles.sheetTitle}>{t('chats.newGroup')}</Text>
+                <TextInput
+                  value={newGroup.title}
+                  onChangeText={(title) => {
+                    setGroupError(null);
+                    setNewGroup({ ...newGroup, title });
+                  }}
+                  placeholder={t('chats.groupName')}
+                  placeholderTextColor={chatColors.meta}
+                  maxLength={80}
+                  autoFocus
+                  style={[styles.search, styles.groupName]}
+                />
+                <Text style={styles.sheetLabel}>{t('chats.groupMembers', { count: newGroup.members.length })}</Text>
+                <ScrollView contentContainerStyle={styles.groupList}>
+                  <CheckList
+                    value={newGroup.members}
+                    onChange={(members) => {
+                      setGroupError(null);
+                      setNewGroup({ ...newGroup, members });
+                    }}
+                    options={(colleagues ?? []).map((person) => ({
+                      value: person.id,
+                      label: person.full_name || person.email || '?',
+                      hint: roleLabel(t, person),
+                    }))}
+                  />
+                </ScrollView>
+                {!!groupError && <Text style={styles.error}>{groupError}</Text>}
+                <View style={styles.sheetActions}>
+                  <Pressable accessibilityRole="button" onPress={() => setNewGroup(null)} style={styles.sheetButton}>
+                    <Text style={styles.sheetButtonText}>{t('chats.back')}</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={creating}
+                    onPress={createGroup}
+                    style={[styles.sheetButton, styles.sheetButtonPrimary, creating && styles.disabled]}>
+                    <Text style={[styles.sheetButtonText, styles.sheetButtonTextPrimary]}>{t('chats.createGroup')}</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.sheetTitle}>{t('teamChat.pickColleague')}</Text>
+                <ScrollView>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setNewGroup({ title: '', members: [] })}
+                    style={({ pressed }) => [styles.person, pressed && styles.personPressed]}>
+                    <Avatar name="👥" size={40} />
+                    <View style={styles.personText}>
+                      <Text style={[styles.personName, styles.newGroup]}>{t('chats.newGroup')}</Text>
+                      <Text style={styles.personRole}>{t('chats.newGroupHint')}</Text>
+                    </View>
+                  </Pressable>
+                  {(colleagues ?? []).map((person) => (
+                    <Pressable
+                      key={person.id}
+                      accessibilityRole="button"
+                      onPress={() => openDirect(person.id)}
+                      style={({ pressed }) => [styles.person, pressed && styles.personPressed]}>
+                      <Avatar name={person.full_name || person.email || '?'} path={person.avatar_path} color={person.accent_color} size={40} />
+                      <View style={styles.personText}>
+                        <Text style={styles.personName}>{person.full_name || person.email}</Text>
+                        <Text style={styles.personRole}>{roleLabel(t, person)}</Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -220,4 +304,14 @@ const styles = StyleSheet.create({
   personText: { flex: 1 },
   personName: { fontSize: 16, fontWeight: '600', color: chatColors.text },
   personRole: { fontSize: 13, color: chatColors.meta },
+  newGroup: { color: chatColors.accent },
+  groupName: { flex: 0, marginHorizontal: 16, marginBottom: 8 },
+  sheetLabel: { fontSize: 13, color: chatColors.meta, paddingHorizontal: 16, paddingBottom: 6 },
+  groupList: { paddingHorizontal: 16, paddingBottom: 8 },
+  sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 8 },
+  sheetButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  sheetButtonPrimary: { backgroundColor: chatColors.accent },
+  sheetButtonText: { fontSize: 15, fontWeight: '600', color: chatColors.accent },
+  sheetButtonTextPrimary: { color: '#FFFFFF' },
+  disabled: { opacity: 0.6 },
 });

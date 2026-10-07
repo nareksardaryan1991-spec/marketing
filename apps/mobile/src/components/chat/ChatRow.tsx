@@ -4,6 +4,7 @@ import { Avatar } from '@/components/Avatar';
 import { useI18n } from '@/i18n';
 import {
   attachmentLabel,
+  groupEventText,
   isOnline,
   listTime,
   type ChatListItem,
@@ -45,12 +46,15 @@ export function ChatRow({
   const title = chatTitle(item, isClient, t, language);
   const mine = !!item.last_author_id && item.last_author_id === myId;
   const read = mine && !!item.others_read_at && !!item.last_message_at && item.others_read_at >= item.last_message_at;
-  const group = item.kind === 'team' || (item.chat === 'order' && !isClient);
-  const author = mine ? t('chats.you') : group ? item.last_author : null;
-  const preview = item.last_deleted
-    ? t('chats.deleted')
-    : item.last_body || attachmentLabel(item.last_attachment, t);
-  const avatarName = item.kind === 'team' ? '👥' : isClient ? t('chats.agency') : title;
+  const group = item.kind === 'team' || item.kind === 'group' || (item.chat === 'order' && !isClient);
+  // Служебная строка группы — уже с именем, без «Автор:» впереди.
+  const author = item.last_event ? null : mine ? t('chats.you') : group ? item.last_author : null;
+  const preview = item.last_event
+    ? groupEventText(item.last_event, item.last_author ?? '', t)
+    : item.last_deleted
+      ? t('chats.deleted')
+      : item.last_body || attachmentLabel(item.last_attachment, t);
+  const avatarName = item.kind === 'team' || (item.kind === 'group' && !item.avatar_path) ? '👥' : isClient ? t('chats.agency') : title;
 
   return (
     <Pressable
@@ -60,7 +64,7 @@ export function ChatRow({
       style={({ pressed }) => [styles.row, selected && styles.selected, pressed && styles.pressed]}>
       <View>
         <Avatar name={avatarName} path={item.avatar_path} size={compact ? 40 : 50} />
-        {item.kind !== 'team' && isOnline(item.last_seen_at) && <View style={styles.onlineDot} />}
+        {item.kind !== 'team' && item.kind !== 'group' && isOnline(item.last_seen_at) && <View style={styles.onlineDot} />}
       </View>
       <View style={styles.text}>
         <View style={styles.line}>
