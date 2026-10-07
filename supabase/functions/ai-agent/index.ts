@@ -178,8 +178,11 @@ async function attachRun(userId: string, isManager: boolean, db: SupabaseClient,
   if (!run.chat || run.status !== 'done' || run.deliverable_id) {
     return json({ error: 'this result cannot be attached' }, 409);
   }
-  const { data: task } = await db.from('tasks').select('id, status, assignee_id').eq('id', taskId).maybeSingle();
-  if (!task || !(task.assignee_id === userId || isManager)) return json({ error: 'task not found' }, 404);
+  const { data: task } = await db.from('tasks').select('id, kind, status, assignee_id').eq('id', taskId).maybeSingle();
+  // Задачу команды сдаёт только её исполнитель; работу по заказу — исполнитель или менеджер.
+  if (!task || !(task.assignee_id === userId || (isManager && task.kind === 'order'))) {
+    return json({ error: 'task not found' }, 404);
+  }
   if (!WORKABLE.includes(task.status)) return json({ error: 'task is not in progress' }, 400);
 
   const result = (run.result ?? {}) as { text?: string; caption?: string | null; files?: string[] };
@@ -346,11 +349,13 @@ Deno.serve(async (req) => {
     if (typeof body.task_id !== 'string') return json({ error: 'bad request' }, 400);
     const { data: task } = await db
       .from('tasks')
-      .select('id, status, assignee_id, order_id')
+      .select('id, kind, status, assignee_id, order_id')
       .eq('id', body.task_id)
       .maybeSingle();
-    // Как и отправка версии вручную: исполнитель задачи или менеджер.
-    if (!task || !(task.assignee_id === auth.user.id || isManager)) return json({ error: 'task not found' }, 404);
+    // Как и отправка версии вручную: исполнитель задачи или менеджер (задачу команды — только исполнитель).
+    if (!task || !(task.assignee_id === auth.user.id || (isManager && task.kind === 'order'))) {
+      return json({ error: 'task not found' }, 404);
+    }
     if (!WORKABLE.includes(task.status)) return json({ error: 'task is not in progress' }, 400);
     const { count: running } = await admin
       .from('agent_runs')

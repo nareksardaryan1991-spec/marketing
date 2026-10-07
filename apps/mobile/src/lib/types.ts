@@ -155,6 +155,8 @@ export type Task = {
   priority: TaskPriority;
   attachments: string[];
   created_by: string | null;
+  // Проверяющий задачи команды (по умолчанию автор).
+  reviewer_id?: string | null;
   related_order_id: string | null;
   // «Передать человеку»: из какой работы AI-агента задача и какой агент делал черновик (миграция 0030).
   from_agent_run_id?: string | null;

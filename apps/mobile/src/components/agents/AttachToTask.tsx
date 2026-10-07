@@ -32,7 +32,10 @@ export function AttachToTask({ runId, agent, onDone }: { runId: string; agent: A
       .in('status', [...AGENT_TASK_STATUSES])
       .order('due_date', { ascending: true, nullsFirst: false })
       .limit(30);
-    if (!isManagerRole(profile.role)) query = query.eq('assignee_id', profile.id);
+    // Менеджер сдаёт работу агента в любую задачу по заказу, а в задачу команды — только в свою.
+    query = isManagerRole(profile.role)
+      ? query.or(`kind.eq.order,assignee_id.eq.${profile.id}`)
+      : query.eq('assignee_id', profile.id);
     if (services) query = query.in('service_id', services);
     query.then(({ data, error }) => {
       setError(error?.message ?? null);

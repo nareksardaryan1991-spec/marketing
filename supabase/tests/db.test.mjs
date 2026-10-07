@@ -1145,13 +1145,15 @@ await fails('accepted team task cannot be published', () => as(MANAGER, 'select 
 
 await fails('employee cannot edit team tasks', () => as(EMPLOYEE, 'select update_team_task($1, $2, null, $3, null, $4)', [freeTask, 'Y', EMPLOYEE, 'normal']));
 await fails('update_team_task does not touch order work', () => as(MANAGER, 'select update_team_task($1, $2, null, $3, null, $4)', [task2, 'Y', EMPLOYEE, 'normal']));
-await as(MANAGER, 'select update_team_task($1, $2, $3, $4, $5, $6, $7)', [spareTask, 'Разобрать архив фото', 'По папкам', EMPLOYEE, '2026-10-25', 'normal', bizId]);
+await fails('manager cannot edit the owner task (does not even see it)', () => as(MANAGER, 'select update_team_task($1, $2, null, $3, null, $4)', [spareTask, 'Y', EMPLOYEE, 'normal']));
+await as(ADMIN, 'select update_team_task($1, $2, $3, $4, $5, $6, $7)', [spareTask, 'Разобрать архив фото', 'По папкам', EMPLOYEE, '2026-10-25', 'normal', bizId]);
 const st = (await as(EMPLOYEE, 'select * from tasks where id = $1', [spareTask])).rows[0];
-check('manager edits the team task: assigned now, linked to a client', st?.status === 'assigned' && st.title === 'Разобрать архив фото' && st.business_id === bizId);
+check('owner edits the team task: assigned now, linked to a client', st?.status === 'assigned' && st.title === 'Разобрать архив фото' && st.business_id === bizId);
 await fails('employee cannot delete team tasks', () => as(EMPLOYEE, 'select delete_team_task($1)', [spareTask]));
 await fails('delete_team_task does not delete order work', () => as(MANAGER, 'select delete_team_task($1)', [task2]));
-await as(MANAGER, 'select delete_team_task($1)', [spareTask]);
-check('manager deletes a team task', (await as(MANAGER, 'select id from tasks where id = $1', [spareTask])).rows.length === 0);
+await fails('manager cannot delete the owner task', () => as(MANAGER, 'select delete_team_task($1)', [spareTask]));
+await as(ADMIN, 'select delete_team_task($1)', [spareTask]);
+check('owner deletes a team task', (await as(ADMIN, 'select id from tasks where id = $1', [spareTask])).rows.length === 0);
 await fails('order work still needs order fields', () => as(null, `insert into tasks (kind, title) values ('order', 'x')`));
 await fails('team task cannot sit on an order', () => as(null, `insert into tasks (kind, title, order_id) values ('team', 'x', $1)`, [orderId]));
 
@@ -1216,6 +1218,65 @@ await as(MANAGER, `update tasks set assignee_id = $2 where id = $1`, [task2, MAN
 check('nobody changes task rows directly, only through functions',
   (await as(ADMIN, 'select title from tasks where id = $1', [privTask])).rows[0].title === 'Тайная задача' &&
   (await as(ADMIN, 'select assignee_id from tasks where id = $1', [task2])).rows[0].assignee_id !== MANAGER);
+
+// Кто что может в задаче команды: правит и удаляет автор и владелец; исполнитель — статус, результат,
+// комментарии; проверяющий — принять или вернуть. Отмеченный менеджер только смотрит и пишет комментарии.
+const rTask = (await as(MANAGER2, `select create_team_task($1, $2, $3, $4, 'high', null, null, null, $5, $6) as id`,
+  ['Снять витрину', 'Вечером, с подсветкой', EMPLOYEE, '2026-11-01', DESIGNER, [MANAGER]])).rows[0].id;
+const rRow = async () => (await as(ADMIN, 'select * from tasks where id = $1', [rTask])).rows[0];
+const editArgs = 'select update_team_task($1, $2, $3, $4, $5, $6)';
+const hack = [rTask, 'Взлом', 'Другое описание', EMPLOYEE, '2000-01-01', 'low'];
+await fails('assignee cannot change the text or the due date', () => as(EMPLOYEE, editArgs, hack));
+await fails('assignee cannot hand the task to someone else', () => as(EMPLOYEE, editArgs, [rTask, 'Снять витрину', null, DESIGNER, null, 'high']));
+await fails('reviewer cannot change the text, due date or assignee', () => as(DESIGNER, editArgs, hack));
+await fails('a marked manager cannot edit a task of another manager', () => as(MANAGER, editArgs, hack));
+await fails('a marked manager cannot delete a task of another manager', () => as(MANAGER, 'select delete_team_task($1)', [rTask]));
+await fails('assignee cannot delete the task', () => as(EMPLOYEE, 'select delete_team_task($1)', [rTask]));
+await fails('reviewer cannot delete the task', () => as(DESIGNER, 'select delete_team_task($1)', [rTask]));
+await fails('a marked manager cannot change files of the assignment', () => as(MANAGER, 'select set_team_task_attachments($1, $2)', [rTask, []]));
+await fails('board assignment does not touch team tasks, even for the author', () => as(MANAGER2, 'select assign_task($1, $2)', [rTask, DESIGNER]));
+let rt = await rRow();
+check('the task is untouched after all those attempts',
+  rt.title === 'Снять витрину' && rt.brief === 'Вечером, с подсветкой' && rt.due_date.toISOString().startsWith('2026-1') &&
+  rt.assignee_id === EMPLOYEE && rt.priority === 'high');
+
+await fails('reviewer cannot upload into the task folder', () => as(DESIGNER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [rTask + '/r.jpg']));
+await fails('a marked manager cannot upload into the task folder', () => as(MANAGER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [rTask + '/m.jpg']));
+await as(MANAGER2, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [rTask + '/brief/plan.pdf']);
+await as(EMPLOYEE, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [rTask + '/v1.jpg']);
+await fails('nobody but the assignee starts the work', () => as(MANAGER2, 'select start_task($1)', [rTask]));
+await as(EMPLOYEE, 'select start_task($1)', [rTask]);
+await fails('the author cannot submit the result for the assignee', () => as(MANAGER2, `select submit_deliverable($1, 'за него')`, [rTask]));
+await fails('a marked manager cannot submit the result either', () => as(MANAGER, `select submit_deliverable($1, 'за него')`, [rTask]));
+await fails('an AI agent cannot submit into a team task for someone else', () => as(null, `select submit_agent_deliverable($1, $2, 'smm', 'текст')`, [rTask, MANAGER2]));
+await as(EMPLOYEE, `select submit_deliverable($1, 'Витрина снята', array[$2])`, [rTask, rTask + '/v1.jpg']);
+await fails('assignee cannot mark the task done', () => as(EMPLOYEE, 'select review_task($1, true)', [rTask]));
+await fails('the author is not the reviewer here and cannot accept', () => as(MANAGER2, 'select review_task($1, true)', [rTask]));
+await fails('a marked manager cannot accept', () => as(MANAGER, 'select review_task($1, true)', [rTask]));
+await as(MANAGER, `insert into task_comments (task_id, author_id, body) values ($1, $2, 'Отличный ракурс')`, [rTask, MANAGER]);
+await as(DESIGNER, 'select review_task($1, false, $2)', [rTask, 'Добавь общий план']);
+check('reviewer (not a manager) returns the work with a comment',
+  (await rRow()).status === 'in_progress' &&
+  (await as(EMPLOYEE, 'select body from task_comments where task_id = $1', [rTask])).rows.map(r => r.body).join('|') === 'Отличный ракурс|Добавь общий план');
+const handedVersion = (await as(null, `select submit_agent_deliverable($1, $2, 'smm', 'Подпись к фото') as id`, [rTask, EMPLOYEE])).rows[0].id;
+check('the assignee may hand in a version made by an AI agent', !!handedVersion && (await rRow()).status === 'internal_review');
+await as(DESIGNER, 'select review_task($1, true)', [rTask]);
+check('reviewer accepts: done, the reviewer is recorded on the version',
+  (await rRow()).status === 'approved' &&
+  (await as(ADMIN, 'select reviewed_by from deliverables where task_id = $1 order by version desc limit 1', [rTask])).rows[0].reviewed_by === DESIGNER);
+
+await as(MANAGER2, 'select update_team_task($1, $2, $3, $4, $5, $6, null, null, $7, $8)',
+  [rTask, 'Снять витрину ещё раз', 'Днём', EMPLOYEE, '2026-11-05', 'urgent', MANAGER2, []]);
+rt = await rRow();
+check('the author changes text, due date, importance, reviewer and «who sees»',
+  rt.title === 'Снять витрину ещё раз' && rt.brief === 'Днём' && rt.priority === 'urgent' && rt.reviewer_id === MANAGER2 &&
+  (await as(MANAGER, 'select id from tasks where id = $1', [rTask])).rows.length === 0);
+await as(MANAGER2, 'select set_team_task_attachments($1, $2)', [rTask, [rTask + '/brief/plan.pdf']]);
+await as(ADMIN, 'select update_team_task($1, $2, $3, $4, $5, $6)', [rTask, 'Витрина (владелец)', 'Днём', EMPLOYEE, '2026-11-05', 'urgent']);
+check('the owner edits any task', (await rRow()).title === 'Витрина (владелец)');
+await fails('the assignee still cannot delete', () => as(EMPLOYEE, 'select delete_team_task($1)', [rTask]));
+await as(MANAGER2, 'select delete_team_task($1)', [rTask]);
+check('the author deletes own task', (await as(ADMIN, 'select id from tasks where id = $1', [rTask])).rows.length === 0);
 
 // Уведомления по задачам команды.
 const notesFor = async (taskId) => (await as(null,
@@ -1304,7 +1365,7 @@ const anonOpen = [];
 for (const fn of userFns) if (await canRun('anon', fn)) anonOpen.push(fn);
 check('team task functions are closed to anonymous visitors: ' + anonOpen.join(), anonOpen.length === 0);
 const internalOpen = [];
-for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created', 'task_payload', 'notify_users'])
+for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created', 'task_payload', 'notify_users', 'team_task_for_edit', 'set_task_watchers'])
   for (const role of ['anon', 'authenticated']) if (await canRun(role, fn)) internalOpen.push(`${fn}:${role}`);
 check('internal helpers are not callable by users: ' + internalOpen.join(), internalOpen.length === 0);
 

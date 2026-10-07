@@ -126,6 +126,7 @@ export default function TaskScreen() {
   const isManager = isManagerRole(profile.role);
   const isStaff = isTeamRole(profile.role);
   const isAssignee = task.assignee_id === profile.id;
+  const isOwner = profile.role === 'admin';
   // Задача команды: без клиента на согласовании, публикации и AI-агентов.
   const team = task.kind === 'team';
   const canWork = isAssignee && WORKING_STATUSES.includes(task.status);
@@ -153,7 +154,8 @@ export default function TaskScreen() {
             task={task}
             businessName={task.businesses?.name ?? null}
             people={authors}
-            manager={isManager}
+            // Менять и удалять задачу команды — автор и владелец (как в базе, can_edit_team_task).
+            canEdit={isOwner || (isManager && task.created_by === profile.id)}
             onChanged={reload}
           />
           {/* Задача про клиента — его профиль под рукой, без пожеланий к заказу. */}
@@ -190,7 +192,8 @@ export default function TaskScreen() {
         <AgentRuns taskId={task.id} refreshKey={agentRefresh} onFinished={reload} />
       )}
 
-      {isManager && task.status === 'internal_review' && (
+      {/* Задачу команды принимает проверяющий (или владелец), работу по заказу — менеджер. */}
+      {(team ? isOwner || task.reviewer_id === profile.id : isManager) && task.status === 'internal_review' && (
         <ReviewPanel
           key={`review-${revision}`}
           taskId={task.id}

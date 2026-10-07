@@ -19,19 +19,20 @@ import { FileList } from './FileList';
 import { taskStyles as styles } from './styles';
 
 // Задание для человека: описание, важность, срок, кто поставил, клиент и файлы.
-// Менеджер здесь же меняет задачу, прикрепляет файлы и удаляет её.
+// Автор и владелец здесь же меняют задачу, прикрепляют файлы и удаляют её.
 export function TeamTaskCard({
   task,
   businessName,
   people,
-  manager,
+  canEdit,
   onChanged,
 }: {
   task: Task;
   businessName: string | null;
   // Имена исполнителя и автора (id → имя).
   people: Record<string, string>;
-  manager: boolean;
+  // Автор задачи или владелец.
+  canEdit: boolean;
   onChanged: () => void;
 }) {
   const { t, language } = useI18n();
@@ -83,9 +84,9 @@ export function TeamTaskCard({
           </View>
         ))}
 
-      {(task.attachments.length > 0 || manager) && <Text style={styles.label}>{t('teamTasks.files')}</Text>}
+      {(task.attachments.length > 0 || canEdit) && <Text style={styles.label}>{t('teamTasks.files')}</Text>}
       <FileList paths={task.attachments} />
-      {manager &&
+      {canEdit &&
         task.attachments.map((path) => (
           <View key={path} style={[styles.row, { justifyContent: 'space-between' }]}>
             <Text style={[styles.text, { flex: 1 }]} numberOfLines={1}>
@@ -100,7 +101,7 @@ export function TeamTaskCard({
         ))}
 
       <ErrorText>{error}</ErrorText>
-      {manager && (
+      {canEdit && (
         <>
           <Button
             title={t('task.addFiles')}
