@@ -1278,6 +1278,46 @@ await fails('the assignee still cannot delete', () => as(EMPLOYEE, 'select delet
 await as(MANAGER2, 'select delete_team_task($1)', [rTask]);
 check('the author deletes own task', (await as(ADMIN, 'select id from tasks where id = $1', [rTask])).rows.length === 0);
 
+// История задачи команды: кто, что и когда изменил. Пишет сама база.
+const hTask = (await as(MANAGER2, `select create_team_task($1, $2, $3, $4, 'normal', null, null, null, null, $5) as id`,
+  ['Обновить прайс', 'Новые цены', EMPLOYEE, '2026-11-10', [DESIGNER]])).rows[0].id;
+const history = async (user) => (await as(user, 'select actor_id, field, old_value, new_value from task_history where task_id = $1 order by created_at, field', [hTask])).rows;
+let hh = await history(MANAGER2);
+check('creation is one history entry by the author (watchers are part of it)',
+  hh.length === 1 && hh[0].field === 'created' && hh[0].actor_id === MANAGER2 && hh[0].new_value === 'Обновить прайс');
+await as(MANAGER2, 'select update_team_task($1, $2, $3, $4, $5, $6, $7, null, $8, $9)',
+  [hTask, 'Обновить прайс-лист', 'Новые цены', EMPLOYEE, '2026-11-12', 'high', bizId, DESIGNER, [FREELANCER]]);
+hh = (await history(MANAGER2)).slice(1);
+const byField = Object.fromEntries(hh.map(h => [h.field, h]));
+check('an edit records only what changed, old and new, by whom: ' + hh.map(h => h.field).join(),
+  hh.map(h => h.field).sort().join() === 'business,due_date,priority,reviewer_id,title,watchers' &&
+  hh.every(h => h.actor_id === MANAGER2) &&
+  byField.title.old_value === 'Обновить прайс' && byField.title.new_value === 'Обновить прайс-лист' &&
+  byField.due_date.old_value === '2026-11-10' && byField.due_date.new_value === '2026-11-12' &&
+  byField.priority.new_value === 'high' && byField.business.old_value === null && byField.business.new_value === 'Cafe' &&
+  byField.reviewer_id.old_value === MANAGER2 && byField.reviewer_id.new_value === DESIGNER &&
+  JSON.stringify(byField.watchers.old_value) === JSON.stringify([DESIGNER]) && JSON.stringify(byField.watchers.new_value) === JSON.stringify([FREELANCER]));
+await as(EMPLOYEE, 'select start_task($1)', [hTask]);
+await as(EMPLOYEE, `select submit_deliverable($1, 'Готово')`, [hTask]);
+await as(DESIGNER, 'select review_task($1, true)', [hTask]);
+const statuses = (await history(ADMIN)).filter(h => h.field === 'status').map(h => `${h.old_value}>${h.new_value}:${h.actor_id === EMPLOYEE ? 'assignee' : h.actor_id === DESIGNER ? 'reviewer' : h.actor_id}`);
+check('status changes are recorded with who did them: ' + statuses.join(' '),
+  statuses.join(' ') === 'assigned>in_progress:assignee in_progress>internal_review:assignee internal_review>approved:reviewer');
+check('the assignee, the reviewer and the watcher see the history',
+  (await history(EMPLOYEE)).length === hh.length + 4 && (await history(DESIGNER)).length === hh.length + 4 &&
+  (await history(FREELANCER)).length === hh.length + 4);
+check('a manager who does not see the task and the client see no history',
+  (await history(MANAGER)).length === 0 && (await history(CLIENT)).length === 0);
+await fails('nobody writes history by hand', () => as(MANAGER2, `insert into task_history (task_id, field) values ($1, 'title')`, [hTask]));
+await as(MANAGER2, `update task_history set field = 'x' where task_id = $1`, [hTask]);
+await as(MANAGER2, `delete from task_history where task_id = $1`, [hTask]);
+check('nobody edits or erases history', (await history(ADMIN)).length === hh.length + 4 && !(await history(ADMIN)).some(h => h.field === 'x'));
+const before = (await history(ADMIN)).length;
+await as(MANAGER2, 'select update_team_task($1, $2, $3, $4, $5, $6, $7, null, $8, $9)',
+  [hTask, 'Обновить прайс-лист', 'Новые цены', EMPLOYEE, '2026-11-12', 'high', bizId, DESIGNER, [FREELANCER]]);
+check('saving without changes adds nothing', (await history(ADMIN)).length === before);
+check('order work keeps no team history', (await as(ADMIN, 'select count(*)::int n from task_history h join tasks t on t.id = h.task_id where t.kind = $1', ['order'])).rows[0].n === 0);
+
 // Уведомления по задачам команды.
 const notesFor = async (taskId) => (await as(null,
   `select user_id, kind, payload from notifications where payload ->> 'task_id' = $1 order by created_at, kind`, [taskId])).rows;
@@ -1365,7 +1405,7 @@ const anonOpen = [];
 for (const fn of userFns) if (await canRun('anon', fn)) anonOpen.push(fn);
 check('team task functions are closed to anonymous visitors: ' + anonOpen.join(), anonOpen.length === 0);
 const internalOpen = [];
-for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created', 'task_payload', 'notify_users', 'team_task_for_edit', 'set_task_watchers'])
+for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created', 'task_payload', 'notify_users', 'team_task_for_edit', 'set_task_watchers', 'log_team_task'])
   for (const role of ['anon', 'authenticated']) if (await canRun(role, fn)) internalOpen.push(`${fn}:${role}`);
 check('internal helpers are not callable by users: ' + internalOpen.join(), internalOpen.length === 0);
 
