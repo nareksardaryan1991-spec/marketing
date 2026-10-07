@@ -336,8 +336,13 @@ MESSAGES = [
 # ---------- Чат команды ----------
 TEAM_ID = '00000000-0000-4000-8000-00000000c0de'
 DIRECT_ID = 'dc000000-0000-4000-8000-000000000001'
+GROUP_ID = 'gc000000-0000-4000-8000-000000000001'
 CONVERSATIONS = {TEAM_ID: {'kind': 'team', 'members': None},
-                 DIRECT_ID: {'kind': 'direct', 'members': {MANAGER, DESIGNER}}}
+                 DIRECT_ID: {'kind': 'direct', 'members': {MANAGER, DESIGNER}},
+                 # Групповой чат (0037): название, фото, создатель, порядок вступления.
+                 GROUP_ID: {'kind': 'group', 'members': {MANAGER, DESIGNER, EMPLOYEE}, 'title': 'Съёмка осеннего меню',
+                            'avatar_path': None, 'created_by': MANAGER,
+                            'joined': {MANAGER: hours_ago(6), DESIGNER: hours_ago(6), EMPLOYEE: hours_ago(6)}}}
 TEAM_MESSAGES = [
     {'id': 'tm1', 'conversation_id': TEAM_ID, 'author_id': MANAGER, 'author_name': 'Нарек',
      'body': 'Всем доброе утро! Сегодня в 11:00 короткая планёрка по Cafe Aroma.', 'created_at': hours_ago(5)},
@@ -347,6 +352,10 @@ TEAM_MESSAGES = [
      'body': 'Ани, для поста №4 возьми фото с новой витрины.', 'created_at': hours_ago(3)},
     {'id': 'tm4', 'conversation_id': DIRECT_ID, 'author_id': DESIGNER, 'author_name': 'Ани Саргсян',
      'body': 'Хорошо, сделаю до вечера.', 'created_at': hours_ago(2)},
+    {'id': 'tm5', 'conversation_id': GROUP_ID, 'author_id': MANAGER, 'author_name': 'Нарек', 'body': '',
+     'event': {'type': 'created', 'title': 'Съёмка осеннего меню'}, 'created_at': hours_ago(6)},
+    {'id': 'tm6', 'conversation_id': GROUP_ID, 'author_id': MANAGER, 'author_name': 'Нарек',
+     'body': 'Гор, Ани — съёмка в четверг в 10:00, нужен тёплый свет и тыквенный латте в кадре.', 'created_at': hours_ago(1)},
 ]
 READ_AT = {}
 
@@ -484,10 +493,12 @@ def my_chats():
         last = msgs[-1] if msgs else None
         other = by_id(conv['other_user_id']) if conv['other_user_id'] else None
         read_at = READ_AT.get((uid, conv['id']), '')
+        group_avatar = CONVERSATIONS[conv['id']].get('avatar_path')
         out.append({
             'chat': 'team', 'id': conv['id'], 'kind': conv['kind'], 'title': conv['other_name'],
             'business_name': None, 'order_created_at': None, 'peer_id': conv['other_user_id'],
-            'peer_role': conv['other_role'], 'avatar_path': other and other['avatar_path'],
+            'peer_role': conv['other_role'], 'avatar_path': group_avatar or (other and other['avatar_path']),
+            'last_event': last and last.get('event'),
             'last_seen_at': other and other['last_seen_at'],
             'last_message_at': last and last['created_at'], 'last_body': last and last['body'],
             'last_author': last and last['author_name'], 'last_author_id': last and last['author_id'],
@@ -518,10 +529,126 @@ def chat_info(chat, cid):
         peer = {'id': o['id'], 'name': o['full_name'], 'avatar_path': o['avatar_path'], 'role': o['role'],
                 'last_seen_at': o['last_seen_at']}
         title = o['full_name']
+    elif CONVERSATIONS[cid]['kind'] == 'group':
+        conv = CONVERSATIONS[cid]
+        people = sorted((by_id(m) for m in conv['members']), key=lambda p: (p['id'] != conv['created_by'], p['full_name']))
+        member_list = [{'id': p['id'], 'name': p['full_name'], 'avatar_path': p['avatar_path'],
+                        'accent_color': p.get('accent_color'), 'role': p['role'], 'job_title': p.get('job_title'),
+                        'last_seen_at': p['last_seen_at']} for p in people]
+        return {'kind': 'group', 'title': conv['title'], 'avatar_path': conv['avatar_path'], 'pinned': pinned or None,
+                'peer': None, 'members': len(member_list), 'member_list': member_list, 'created_by': conv['created_by'],
+                'can_manage': conv['created_by'] == uid or me()['role'] == 'admin',
+                'others_read_at': others_read_at(chat, cid)}
     else:
         members = sum(1 for p in PROFILES.values() if is_team(p['role']))
-    return {'title': title, 'pinned': pinned or None, 'peer': peer, 'members': members,
-            'others_read_at': others_read_at(chat, cid)}
+    kind = 'order' if chat == 'order' else CONVERSATIONS[cid]['kind']
+    return {'kind': kind, 'title': title, 'pinned': pinned or None, 'peer': peer, 'members': members,
+            'can_manage': False, 'others_read_at': others_read_at(chat, cid)}
+
+
+# Групповые чаты (0037): те же проверки, что в базе.
+def post_event(cid, event):
+    profile = me()
+    TEAM_MESSAGES.append({'id': 'ev-%d' % int(time.time() * 1000000), 'conversation_id': cid, 'author_id': profile['id'],
+                          'author_name': profile['full_name'], 'body': '', 'attachments': [], 'reply_to_id': None,
+                          'forwarded_from': None, 'edited_at': None, 'deleted_at': None, 'call': None,
+                          'event': event, 'created_at': now_iso()})
+
+
+def group_title(title):
+    title = (title or '').strip()
+    if not title:
+        return None, 'group name is required'
+    if len(title) > 80:
+        return None, 'group name is too long'
+    return title, None
+
+
+def ensure_creator(cid):
+    conv = CONVERSATIONS[cid]
+    if not conv['members']:
+        del CONVERSATIONS[cid]
+        TEAM_MESSAGES[:] = [m for m in TEAM_MESSAGES if m['conversation_id'] != cid]
+    elif conv['created_by'] not in conv['members']:
+        conv['created_by'] = min(conv['members'], key=lambda u: (conv['joined'].get(u, ''), u))
+
+
+def group_rpc(fn, data):
+    profile, uid = me(), me()['id']
+    cid = data.get('p_conversation_id')
+    if fn == 'create_group_chat':
+        if not is_employee(profile['role']) or profile is PENDING_ANON:
+            return None, 'group chats are for the team only'
+        others = {u for u in data.get('p_members') or [] if u != uid}
+        if not others:
+            return None, 'add at least one colleague'
+        if any(not (by_id(u) and is_employee(by_id(u)['role'])) for u in others):
+            return None, 'group members must be team members'
+        title, error = group_title(data.get('p_title'))
+        if error:
+            return None, error
+        cid = 'gc000000-0000-4000-8000-%012d' % (len(CONVERSATIONS) + 100)
+        CONVERSATIONS[cid] = {'kind': 'group', 'members': others | {uid}, 'title': title, 'avatar_path': None,
+                              'created_by': uid, 'joined': {u: now_iso() for u in others | {uid}}}
+        post_event(cid, {'type': 'created', 'title': title})
+        return cid, None
+    conv = CONVERSATIONS.get(cid)
+    if not conv or conv['kind'] != 'group' or uid not in conv['members']:
+        return None, 'chat not found'
+    if fn == 'leave_group_chat':
+        conv['members'].discard(uid)
+        post_event(cid, {'type': 'left'})
+        ensure_creator(cid)
+        return None, None
+    if not (conv['created_by'] == uid or profile['role'] == 'admin'):
+        return None, 'only the group creator or the owner can change the group'
+    if fn == 'rename_group_chat':
+        title, error = group_title(data.get('p_title'))
+        if error:
+            return None, error
+        if title != conv['title']:
+            conv['title'] = title
+            post_event(cid, {'type': 'renamed', 'title': title})
+        return None, None
+    if fn == 'set_group_photo':
+        path = data.get('p_path')
+        if path and path.split('/')[0] != uid:
+            return None, 'photo must be uploaded by you'
+        if path != conv['avatar_path']:
+            conv['avatar_path'] = path
+            post_event(cid, {'type': 'photo' if path else 'photo_removed'})
+        return None, None
+    if fn == 'add_group_members':
+        users = data.get('p_users') or []
+        if any(not (by_id(u) and is_employee(by_id(u)['role'])) for u in users):
+            return None, 'group members must be team members'
+        added = [u for u in dict.fromkeys(users) if u not in conv['members']]
+        if added:
+            conv['members'].update(added)
+            conv['joined'].update({u: now_iso() for u in added})
+            post_event(cid, {'type': 'added', 'users': added, 'names': [by_id(u)['full_name'] for u in added]})
+        return None, None
+    if fn == 'remove_group_member':
+        target = data.get('p_user_id')
+        if target == uid:
+            return None, 'use leave_group_chat to leave'
+        if profile['role'] != 'admin' and by_id(target) and by_id(target)['role'] == 'admin':
+            return None, 'only the owner can remove the owner'
+        if target not in conv['members']:
+            return None, 'not a member of this group'
+        conv['members'].discard(target)
+        post_event(cid, {'type': 'removed', 'users': [target], 'names': [by_id(target)['full_name']]})
+        ensure_creator(cid)
+        return None, None
+    if fn == 'delete_group_chat':
+        del CONVERSATIONS[cid]
+        TEAM_MESSAGES[:] = [m for m in TEAM_MESSAGES if m['conversation_id'] != cid]
+        return None, None
+    return None, 'unknown function'
+
+
+GROUP_RPCS = ('create_group_chat', 'rename_group_chat', 'set_group_photo', 'add_group_members',
+              'remove_group_member', 'leave_group_chat', 'delete_group_chat')
 
 
 def chat_rpc(fn, data):
@@ -556,6 +683,8 @@ def chat_rpc(fn, data):
     if not message or message['deleted_at'] or not can_access_chat(chat, message[chat_column(chat)]):
         return None, 'message not found'
     cid = message[chat_column(chat)]
+    if message.get('event') and fn in ('edit_chat_message', 'delete_chat_message'):
+        return None, 'service messages cannot be changed'
     if fn == 'edit_chat_message':
         body = (data.get('p_body') or '').strip()
         if message['author_id'] != uid or not (body or message['attachments']):
@@ -596,7 +725,7 @@ def new_message(chat, cid, body, attachments, reply_to, call):
     message = {'id': 'new-%d' % int(time.time() * 1000000), 'author_id': profile['id'],
                'author_name': profile['full_name'], 'body': (body or '').strip(), 'created_at': now_iso(),
                'attachments': attachments or [], 'reply_to_id': reply_to, 'forwarded_from': None,
-               'edited_at': None, 'deleted_at': None, chat_column(chat): cid,
+               'edited_at': None, 'deleted_at': None, 'event': None, chat_column(chat): cid,
                'call': call and {'room': call['room'], 'video': bool(call.get('video'))}}
     if message['reply_to_id'] and not any(m['id'] == reply_to and m[chat_column(chat)] == cid for m in chat_messages(chat)):
         message['reply_to_id'] = None
@@ -629,7 +758,7 @@ def my_conversations():
         read_at = READ_AT.get((uid, cid), '')
         out.append({
             'id': cid, 'kind': conv['kind'],
-            'other_user_id': other and other['id'], 'other_name': other and other['full_name'],
+            'other_user_id': other and other['id'], 'other_name': conv.get('title') or (other and other['full_name']),
             'other_role': other and other['role'],
             'last_message_at': last and last['created_at'], 'last_body': last and last['body'],
             'last_author': last and last['author_name'],
@@ -1633,6 +1762,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                       'edit_chat_message', 'delete_chat_message', 'react_to_message', 'forward_chat_message'):
                 result, error = chat_rpc(fn, data)
                 return self.reply({'message': error}, 400) if error else self.reply(result)
+            if fn in GROUP_RPCS:
+                result, error = group_rpc(fn, data)
+                return self.reply({'message': error}, 400) if error else self.reply(result)
             if fn == 'owner_dashboard':
                 return self.reply(owner_dashboard()) if is_manager(me()['role']) else \
                     self.reply({'message': 'only managers can see the dashboard'}, 400)
@@ -1646,7 +1778,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self.reply(None)
             if fn == 'open_direct_conversation':
                 pair = {me()['id'], data.get('p_user_id')}
-                cid = next((k for k, c in CONVERSATIONS.items() if c['members'] == pair), None)
+                cid = next((k for k, c in CONVERSATIONS.items() if c['kind'] == 'direct' and c['members'] == pair), None)
                 if not cid:
                     cid = 'dc000000-0000-4000-8000-%012d' % len(CONVERSATIONS)
                     CONVERSATIONS[cid] = {'kind': 'direct', 'members': pair}
