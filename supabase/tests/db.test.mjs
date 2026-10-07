@@ -1339,9 +1339,8 @@ check('employee is reminded a day before the due date',
 await as(EMPLOYEE, 'select start_task($1)', [ntask]);
 await as(EMPLOYEE, `select submit_deliverable($1, 'Меню снято')`, [ntask]);
 nn = await notesFor(ntask);
-check('managers are notified when the work is submitted',
-  [MANAGER, ADMIN].every(id => nn.some(n => n.kind === 'task_review' && n.user_id === id)) &&
-  !nn.some(n => n.kind === 'task_review' && n.user_id === EMPLOYEE));
+check('the reviewer (here the author) is notified when the work is submitted, nobody else',
+  nn.filter(n => n.kind === 'task_review').map(n => n.user_id).join() === MANAGER);
 await as(MANAGER, 'select review_task($1, false, $2)', [ntask, 'Нужен вертикальный кадр']);
 nn = await notesFor(ntask);
 check('employee is notified of the return together with the comment',
@@ -1351,6 +1350,37 @@ await as(MANAGER, 'select review_task($1, true)', [ntask]);
 nn = await notesFor(ntask);
 check('employee is notified when the work is accepted, the client is not notified at all',
   nn.some(n => n.kind === 'task_done' && n.user_id === EMPLOYEE) && !nn.some(n => n.user_id === CLIENT));
+
+// Уведомления только тем, кто видит задачу; остальным менеджерам — только число.
+const yesterday = (await as(null, `select (yerevan_today() - 1)::text as d`)).rows[0].d;
+const secret = (await as(MANAGER2, `select create_team_task($1, null, $2, $3, 'normal', null, null, null, $4, '{}') as id`,
+  ['Секретная съёмка', EMPLOYEE, yesterday, DESIGNER])).rows[0].id;
+const known = (await as(MANAGER2, `select create_team_task($1, null, $2, $3, 'normal', null, null, null, null, $4) as id`,
+  ['Известная съёмка', EMPLOYEE, yesterday, [MANAGER]])).rows[0].id;
+await as(null, 'delete from notifications');
+await as(null, `update tasks set due_reminded_on = null where id = any($1)`, [[secret, known]]);
+await as(null, 'select process_due_reminders()');
+const overdueTo = async (taskId) => (await notesFor(taskId)).filter(n => n.kind === 'task_overdue').map(n => n.user_id).sort().join();
+check('an overdue team task: assignee, author, reviewer and owner are told, not other managers',
+  await overdueTo(secret) === [EMPLOYEE, MANAGER2, DESIGNER, ADMIN].sort().join());
+check('a marked manager is told about the task they see',
+  (await overdueTo(known)).split(',').includes(MANAGER));
+const hiddenNotes = (await as(null, `select user_id, payload from notifications where kind = 'team_overdue_hidden'`)).rows;
+check('a manager who does not see some overdue tasks gets only their number, no titles: ' + JSON.stringify(hiddenNotes.map(n => n.payload)),
+  hiddenNotes.some(n => n.user_id === MANAGER && n.payload.count >= 1 && !JSON.stringify(n.payload).includes('Секрет')) &&
+  !hiddenNotes.some(n => n.user_id === ADMIN || n.user_id === MANAGER2 && n.payload.count < 1));
+check('no notification anywhere carries the hidden title to someone who cannot see it',
+  !(await as(null, `select user_id from notifications where payload::text like '%Секретная%'`)).rows
+    .some(n => ![EMPLOYEE, MANAGER2, DESIGNER, ADMIN].includes(n.user_id)));
+await as(null, `select notify_users(array[$1, $2]::uuid[], 'task_assigned', task_payload(t)) from tasks t where id = $3`, [MANAGER, FREELANCER, secret]);
+check('safety net: a team-task notification to someone who does not see the task is not written',
+  (await notesFor(secret)).filter(n => n.kind === 'task_assigned' && [MANAGER, FREELANCER].includes(n.user_id)).length === 0);
+await as(EMPLOYEE, 'select start_task($1)', [secret]);
+await as(EMPLOYEE, `select submit_deliverable($1, 'Сняла')`, [secret]);
+check('submission goes to the reviewer only',
+  (await notesFor(secret)).filter(n => n.kind === 'task_review').map(n => n.user_id).join() === DESIGNER);
+const dashMgr = (await as(MANAGER, 'select owner_dashboard() d')).rows[0].d;
+check('team workload shows numbers only, no task titles', !JSON.stringify(dashMgr).includes('Секретная'));
 
 // «Передать человеку»: задача команды из работы AI-агента.
 const runOf = async (agent, status) => (await as(null,
@@ -1405,7 +1435,7 @@ const anonOpen = [];
 for (const fn of userFns) if (await canRun('anon', fn)) anonOpen.push(fn);
 check('team task functions are closed to anonymous visitors: ' + anonOpen.join(), anonOpen.length === 0);
 const internalOpen = [];
-for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created', 'task_payload', 'notify_users', 'team_task_for_edit', 'set_task_watchers', 'log_team_task'])
+for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created', 'task_payload', 'notify_users', 'team_task_for_edit', 'set_task_watchers', 'log_team_task', 'user_sees_team_task', 'skip_hidden_task_notification'])
   for (const role of ['anon', 'authenticated']) if (await canRun(role, fn)) internalOpen.push(`${fn}:${role}`);
 check('internal helpers are not callable by users: ' + internalOpen.join(), internalOpen.length === 0);
 

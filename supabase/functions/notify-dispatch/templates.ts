@@ -118,6 +118,12 @@ const T: Record<string, Record<Lang, Template>> = {
     hy: (v) => `🔴 Ժամկետանց է (վերջնաժամկետ՝ ${v.due_date})՝ ${v.task}`,
     en: (v) => `🔴 Overdue (due ${v.due_date}): ${v.task}`,
   },
+  // Просроченные задачи команды, недоступные менеджеру: только число, без названий.
+  team_overdue_hidden: {
+    ru: (v) => `🔴 Просрочено задач команды, которые вам не видны: ${v.count}`,
+    hy: (v) => `🔴 Ժամկետանց թիմային առաջադրանքներ, որոնք ձեզ հասանելի չեն՝ ${v.count}`,
+    en: (v) => `🔴 Overdue team tasks you can't see: ${v.count}`,
+  },
   daily_digest: {
     ru: (v) =>
       `☀️ Доброе утро! Итоги вчерашнего дня:\nНовых заказов: ${v.new_orders}\nВыручка: ${v.revenue} ֏\n` +

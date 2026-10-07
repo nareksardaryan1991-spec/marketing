@@ -9,7 +9,7 @@ export type NotificationData = {
 
 // Экран, который открывается по нажатию на уведомление.
 export function notificationTarget(data: NotificationData, isClient: boolean): Href | null {
-  if (data.kind === 'daily_digest') return '/dashboard';
+  if (data.kind === 'daily_digest' || data.kind === 'team_overdue_hidden') return '/dashboard';
   if ((data.kind === 'team_chat_message' || data.kind === 'incoming_call') && data.conversation_id) {
     return `/team-chat/${data.conversation_id}`;
   }
