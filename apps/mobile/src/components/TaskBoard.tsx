@@ -21,6 +21,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { Avatar } from './Avatar';
 import { DueBadge } from './DueBadge';
 import { PriorityBadge } from './PriorityBadge';
+import { TaskStatusBadge } from './TaskStatusBadge';
 import { colors } from './theme';
 import { Button, ErrorText } from './ui';
 
@@ -60,8 +61,9 @@ const DONE: Record<TaskKind, { status: TaskStatus; order: string }> = {
 const DONE_LIMIT = 20;
 const WIDE = 900;
 
-// Доска задач: менеджер и владелец видят все задачи, остальные — свои.
-// kind: работа по заказам (вкладка «Доска») или задачи команды (вкладка «Команда»).
+// Доска задач. Работа по заказам (вкладка «Доска»): менеджер и владелец видят все задачи, остальные — свои.
+// Задачи команды (вкладка «Команда»): каждый видит то, что ему разрешает база (автор, исполнитель,
+// проверяющий, отмеченные, владелец — все), фильтры — «Все» и люди с числом задач, плюс статус.
 export function TaskBoard({ kind }: { kind: TaskKind }) {
   const { t, language } = useI18n();
   const columns = COLUMNS[kind];
@@ -76,7 +78,9 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
   const [assignee, setAssignee] = useState<string>('all');
   const [business, setBusiness] = useState<string>('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
-  const [column, setColumn] = useState('work');
+  const [column, setColumn] = useState(kind === 'team' ? 'all' : 'work');
+  // Задачи команды фильтруются по людям для всех: в списке есть не только свои задачи.
+  const byPeople = manager || kind === 'team';
 
   useFocusEffect(
     useCallback(() => {
@@ -94,14 +98,14 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
         .eq('status', done.status)
         .order(done.order, { ascending: false })
         .limit(DONE_LIMIT);
-      if (!manager && profile) {
+      if (!manager && profile && kind === 'order') {
         active = active.eq('assignee_id', profile.id);
         finished = finished.eq('assignee_id', profile.id);
       }
       Promise.all([
         active,
         finished,
-        manager
+        manager || kind === 'team'
           ? supabase
               .from('profiles')
               .select('id, full_name, email, avatar_path, accent_color')
@@ -123,16 +127,34 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [tasks]);
 
-  const shown = tasks.filter(
+  const inColumn = (task: Row, key: string) =>
+    key === 'all' || columns.find((c) => c.key === key)!.statuses.includes(task.status);
+  // Всё, кроме фильтра по человеку: из этого считаются числа на чипах людей.
+  const filtered = tasks.filter(
     (task) =>
-      (assignee === 'all' || (assignee === 'none' ? !task.assignee_id : task.assignee_id === assignee)) &&
       (business === 'all' || task.business_id === business) &&
-      (!overdueOnly || dueTone(task.due_date, task.status) === 'overdue'),
+      (!overdueOnly || dueTone(task.due_date, task.status) === 'overdue') &&
+      (kind === 'order' || inColumn(task, column)),
   );
-  const columnTasks = (key: string) => {
-    const statuses = columns.find((c) => c.key === key)!.statuses;
-    return shown.filter((task) => statuses.includes(task.status));
-  };
+  const shown = filtered.filter(
+    (task) => assignee === 'all' || (assignee === 'none' ? !task.assignee_id : task.assignee_id === assignee),
+  );
+  const columnTasks = (key: string) => shown.filter((task) => inColumn(task, key));
+  const statusTasks = (key: string) =>
+    tasks.filter(
+      (task) =>
+        inColumn(task, key) &&
+        (business === 'all' || task.business_id === business) &&
+        (!overdueOnly || dueTone(task.due_date, task.status) === 'overdue') &&
+        (assignee === 'all' || (assignee === 'none' ? !task.assignee_id : task.assignee_id === assignee)),
+    );
+
+  // Чипы людей: в задачах команды — только те, чьи задачи человеку видны, с числом задач.
+  const countOf = (id: string) => filtered.filter((task) => task.assignee_id === id).length;
+  const chipPeople =
+    kind === 'team' ? people.filter((p) => tasks.some((task) => task.assignee_id === p.id)) : people;
+  const unassigned = filtered.filter((task) => !task.assignee_id).length;
+  const withCount = (label: string, n: number) => (kind === 'team' ? `${label} ${n}` : label);
 
   const card = (task: Row) => {
     const person = task.assignee_id ? byId.get(task.assignee_id) : undefined;
@@ -147,10 +169,11 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
           {!!task.businesses?.name && <Text style={styles.cardBusiness}>{task.businesses.name}</Text>}
           <View style={styles.cardFooter}>
             <View style={[styles.flex, styles.badges]}>
+              {kind === 'team' && column === 'all' && <TaskStatusBadge status={task.status} kind="team" />}
               {kind === 'team' && <PriorityBadge priority={task.priority} />}
               <DueBadge due={task.due_date} status={task.status} />
             </View>
-            {manager &&
+            {byPeople &&
               (person ? (
                 <Avatar name={person.full_name || person.email || '?'} path={person.avatar_path} color={person.accent_color} size={26} />
               ) : task.assignee_id ? null : (
@@ -183,15 +206,33 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
       <View style={styles.filters}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip} contentContainerStyle={styles.chips}>
           {chip('overdue', `🔴 ${t('board.overdue')}`, overdueOnly, () => setOverdueOnly(!overdueOnly), true)}
-          {manager && chip('all', t('board.everyone'), assignee === 'all', () => setAssignee('all'))}
-          {manager && chip('none', t('board.noAssignee'), assignee === 'none', () => setAssignee('none'))}
-          {manager &&
-            people.map((p) =>
-              chip(p.id, (p.full_name || p.email || '?').split(' ')[0], assignee === p.id, () =>
-                setAssignee(assignee === p.id ? 'all' : p.id),
+          {byPeople && chip('all', withCount(t('board.everyone'), filtered.length), assignee === 'all', () => setAssignee('all'))}
+          {byPeople &&
+            (kind === 'order' || unassigned > 0) &&
+            chip('none', withCount(t('board.noAssignee'), unassigned), assignee === 'none', () => setAssignee('none'))}
+          {byPeople &&
+            chipPeople.map((p) =>
+              chip(
+                p.id,
+                withCount((p.full_name || p.email || '?').split(' ')[0], countOf(p.id)),
+                assignee === p.id,
+                () => setAssignee(assignee === p.id ? 'all' : p.id),
               ),
             )}
         </ScrollView>
+        {/* Задачи команды: фильтр по статусу — «Все» или один этап. */}
+        {kind === 'team' && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip} contentContainerStyle={styles.chips}>
+            {[{ key: 'all' }, ...columns].map((c) =>
+              chip(
+                `s-${c.key}`,
+                `${c.key === 'all' ? t('teamTasks.allStatuses') : label(c.key)} ${statusTasks(c.key).length}`,
+                column === c.key,
+                () => setColumn(c.key),
+              ),
+            )}
+          </ScrollView>
+        )}
         {businesses.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip} contentContainerStyle={styles.chips}>
             {chip('b-all', t('board.allClients'), business === 'all', () => setBusiness('all'))}
@@ -205,7 +246,7 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
 
       {wide ? (
         <ScrollView horizontal contentContainerStyle={styles.columns}>
-          {columns.map((c) => {
+          {columns.filter((c) => kind === 'order' || column === 'all' || column === c.key).map((c) => {
             const list = columnTasks(c.key);
             return (
               <View key={c.key} style={styles.column}>
@@ -221,6 +262,11 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
               </View>
             );
           })}
+        </ScrollView>
+      ) : kind === 'team' ? (
+        <ScrollView contentContainerStyle={styles.cards}>
+          {shown.length === 0 && <Text style={styles.empty}>{t('board.empty')}</Text>}
+          {shown.map(card)}
         </ScrollView>
       ) : (
         <>

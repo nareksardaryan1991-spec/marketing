@@ -431,6 +431,7 @@ export const en: Translations = {
     watchers: 'Who can see',
     watchersHint: 'The author, the assignee and the reviewer always see the task; the owner sees all tasks. Tick anyone else who should see it.',
     alwaysSees: 'Always sees',
+    allStatuses: 'All statuses',
     noDueDate: 'No due date',
     history: {
       title: 'Change history',
