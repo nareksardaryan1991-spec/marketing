@@ -1086,7 +1086,7 @@ check('team task without a client: assigned, trimmed, author kept',
   ft.kind === 'team' && ft.status === 'assigned' && ft.title === 'Обновить шаблон сторис' && ft.brief === 'Новые цвета бренда' &&
   ft.priority === 'high' && ft.created_by === MANAGER && ft.order_id === null && ft.business_id === null);
 check('owner creates an unassigned team task, two tasks without an order coexist',
-  (await as(MANAGER, 'select status from tasks where id = $1', [spareTask])).rows[0].status === 'new');
+  (await as(ADMIN, 'select status from tasks where id = $1', [spareTask])).rows[0].status === 'new');
 const linkedTask = (await as(MANAGER, teamTaskArgs, ['Снять десерты для заказа', 'Утренний свет', EMPLOYEE, '2026-10-12', 'urgent', null, orderId])).rows[0].id;
 const lt = (await as(MANAGER, 'select * from tasks where id = $1', [linkedTask])).rows[0];
 check('team task about an order keeps the order aside and takes its client',
@@ -1101,7 +1101,11 @@ check('employee sees only own team tasks',
   (await as(EMPLOYEE, `select id from tasks where kind = 'team' order by id`)).rows.map(r => r.id).join() === [freeTask, linkedTask].sort().join());
 check('employee does not see an unassigned team task', (await as(EMPLOYEE, 'select id from tasks where id = $1', [spareTask])).rows.length === 0);
 check('freelancer does not see team tasks of others', (await as(FREELANCER, `select id from tasks where kind = 'team'`)).rows.length === 0);
-check('staff team sees team tasks', (await as(DESIGNER, `select id from tasks where kind = 'team'`)).rows.length === 3);
+check('staff team does not see team tasks of others', (await as(DESIGNER, `select id from tasks where kind = 'team'`)).rows.length === 0);
+check('manager sees own team tasks, not the owner task; the owner sees all',
+  (await as(MANAGER, `select id from tasks where kind = 'team' order by id`)).rows.map(r => r.id).join() === [freeTask, linkedTask].sort().join() &&
+  (await as(ADMIN, `select id from tasks where kind = 'team'`)).rows.length === 3);
+check('reviewer defaults to the author', ft.reviewer_id === MANAGER);
 
 await as(MANAGER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [linkedTask + '/brief/ref.jpg']);
 await fails('attachments must be in the task folder', () => as(MANAGER, 'select set_team_task_attachments($1, $2)', [linkedTask, [freeTask + '/x.jpg']]));
@@ -1150,6 +1154,68 @@ await as(MANAGER, 'select delete_team_task($1)', [spareTask]);
 check('manager deletes a team task', (await as(MANAGER, 'select id from tasks where id = $1', [spareTask])).rows.length === 0);
 await fails('order work still needs order fields', () => as(null, `insert into tasks (kind, title) values ('order', 'x')`));
 await fails('team task cannot sit on an order', () => as(null, `insert into tasks (kind, title, order_id) values ('team', 'x', $1)`, [orderId]));
+
+// Кто видит задачу команды: автор, исполнитель, проверяющий, отмеченные и владелец. Чужой менеджер — нет.
+const MANAGER2 = 'abababab-abab-abab-abab-abababababab';
+await db.exec(`insert into auth.users values ('${MANAGER2}', 'm2@x', '{"full_name":"Mila"}')`);
+await as(ADMIN, `select set_user_role($1, 'manager')`, [MANAGER2]);
+const fullArgs = `select create_team_task($1, $2, $3, null, 'normal', null, $4, null, $5, $6) as id`;
+const privTask = (await as(MANAGER2, fullArgs, ['Тайная задача', 'Только для своих', EMPLOYEE, orderId, DESIGNER, [FREELANCER, ADMIN, FREELANCER]])).rows[0].id;
+await as(EMPLOYEE, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [privTask + '/secret.jpg']);
+await as(EMPLOYEE, `insert into task_comments (task_id, author_id, body) values ($1, $2, 'Начал')`, [privTask, EMPLOYEE]);
+await as(EMPLOYEE, 'select start_task($1)', [privTask]);
+await as(EMPLOYEE, `select submit_deliverable($1, 'Версия 1', array[$2], 'заметка')`, [privTask, privTask + '/secret.jpg']);
+const seenTeam = async (user) => ({
+  task: (await as(user, 'select id from tasks where id = $1', [privTask])).rows.length,
+  versions: (await as(user, 'select id from deliverables where task_id = $1', [privTask])).rows.length,
+  notes: (await as(user, 'select note from deliverable_notes where task_id = $1', [privTask])).rows.length,
+  comments: (await as(user, 'select id from task_comments where task_id = $1', [privTask])).rows.length,
+  watchers: (await as(user, 'select user_id from task_watchers where task_id = $1', [privTask])).rows.length,
+  files: (await as(user, `select name from storage.objects where bucket_id = 'deliverables' and name like $1`, [privTask + '/%'])).rows.length,
+  view: (await as(user, 'select can_view_task($1) v', [privTask])).rows[0].v,
+  orderNotes: (await as(user, 'select task_order_notes($1) n', [privTask])).rows[0].n,
+});
+const stranger = await seenTeam(MANAGER);
+check('another manager cannot open the task by a direct link, nor its versions, comments or files: ' + JSON.stringify(stranger),
+  stranger.task + stranger.versions + stranger.notes + stranger.comments + stranger.watchers + stranger.files === 0 &&
+  stranger.view === false && stranger.orderNotes === null);
+const clientSeen = await seenTeam(CLIENT);
+check('client cannot open the team task either', clientSeen.task + clientSeen.versions + clientSeen.files === 0 && clientSeen.view === false);
+await fails('another manager cannot comment on a hidden task', () => as(MANAGER, `insert into task_comments (task_id, author_id, body) values ($1, $2, 'x')`, [privTask, MANAGER]));
+await fails('another manager cannot upload into a hidden task', () => as(MANAGER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [privTask + '/x.jpg']));
+for (const [name, id] of [['author', MANAGER2], ['assignee', EMPLOYEE], ['reviewer', DESIGNER], ['watcher', FREELANCER], ['owner', ADMIN]]) {
+  const r = await seenTeam(id);
+  check(`${name} sees the task with its versions, comments and files`,
+    r.task === 1 && r.versions === 1 && r.notes === 1 && r.comments === 1 && r.files === 1 && r.view === true);
+}
+check('watchers: no duplicates, the owner is not stored (sees everything anyway)',
+  (await as(MANAGER2, 'select user_id from task_watchers where task_id = $1', [privTask])).rows.map(r => r.user_id).join() === FREELANCER);
+check('reviewer is kept', (await as(ADMIN, 'select reviewer_id from tasks where id = $1', [privTask])).rows[0].reviewer_id === DESIGNER);
+
+await as(MANAGER2, 'select update_team_task($1, $2, $3, $4, null, $5)', [privTask, 'Тайная задача', 'Только для своих', EMPLOYEE, 'normal']);
+check('editing without reviewer and watchers keeps them',
+  (await as(ADMIN, 'select reviewer_id from tasks where id = $1', [privTask])).rows[0].reviewer_id === DESIGNER &&
+  (await as(ADMIN, 'select count(*)::int n from task_watchers where task_id = $1', [privTask])).rows[0].n === 1);
+await as(MANAGER2, 'select update_team_task($1, $2, $3, $4, null, $5, null, null, $6, $7)', [privTask, 'Тайная задача', null, EMPLOYEE, 'normal', MANAGER2, [MANAGER]]);
+check('watchers replaced: the marked manager now sees the task, the unmarked freelancer does not',
+  (await as(MANAGER, 'select id from tasks where id = $1', [privTask])).rows.length === 1 &&
+  (await as(FREELANCER, 'select id from tasks where id = $1', [privTask])).rows.length === 0);
+await fails('watchers must be team members', () => as(MANAGER2, fullArgs, ['X', null, EMPLOYEE, null, null, [CLIENT]]));
+await fails('watchers are set only through task functions', () => as(MANAGER2, 'select set_task_watchers($1, $2)', [privTask, [DESIGNER]]));
+await fails('watchers cannot be added directly', () => as(MANAGER2, 'insert into task_watchers (task_id, user_id) values ($1, $2)', [privTask, DESIGNER]));
+
+await fails('manager cannot give a task to the owner', () => as(MANAGER, fullArgs, ['X', null, ADMIN, null, null, []]));
+await fails('manager cannot make the owner the reviewer', () => as(MANAGER, fullArgs, ['X', null, EMPLOYEE, null, ADMIN, []]));
+await fails('manager cannot reassign a task to the owner', () => as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4)', [privTask, 'Y', ADMIN, 'normal']));
+const ownerSelf = (await as(ADMIN, fullArgs, ['Себе', null, ADMIN, null, null, []])).rows[0].id;
+check('the owner can take a task', (await as(ADMIN, 'select assignee_id from tasks where id = $1', [ownerSelf])).rows[0].assignee_id === ADMIN);
+await as(ADMIN, 'select delete_team_task($1)', [ownerSelf]);
+
+await as(MANAGER, `update tasks set title = 'Взлом', due_date = '2000-01-01' where id = $1`, [privTask]);
+await as(MANAGER, `update tasks set assignee_id = $2 where id = $1`, [task2, MANAGER]);
+check('nobody changes task rows directly, only through functions',
+  (await as(ADMIN, 'select title from tasks where id = $1', [privTask])).rows[0].title === 'Тайная задача' &&
+  (await as(ADMIN, 'select assignee_id from tasks where id = $1', [task2])).rows[0].assignee_id !== MANAGER);
 
 // Уведомления по задачам команды.
 const notesFor = async (taskId) => (await as(null,
