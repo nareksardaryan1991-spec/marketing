@@ -16,7 +16,7 @@ const TONES: Record<TaskStatus, { bg: string; fg: string }> = {
 };
 
 // У задачи команды четыре понятных статуса: «Новая», «В работе», «На проверке», «Готово».
-const TEAM_STATUS: Partial<Record<TaskStatus, string>> = {
+export const TEAM_STATUS: Partial<Record<TaskStatus, string>> = {
   new: 'new',
   assigned: 'new',
   in_progress: 'in_progress',

@@ -1,16 +1,16 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
 import { agentById } from '@/lib/agents';
 import { confirm } from '@/lib/confirm';
 import { fileName, pickAndUpload } from '@/lib/files';
-import { formatDate } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { Task } from '@/lib/types';
 
 import { agentLabel } from '../agents/AgentAvatar';
+import { DueBadge } from '../DueBadge';
 import { NavList, NavRow } from '../NavList';
 import { PriorityBadge } from '../PriorityBadge';
 import { colors } from '../theme';
@@ -18,8 +18,8 @@ import { Button, Card, ErrorText } from '../ui';
 import { FileList } from './FileList';
 import { taskStyles as styles } from './styles';
 
-// Задание для человека: описание, важность, срок, кто поставил, клиент и файлы.
-// Автор и владелец здесь же меняют задачу, прикрепляют файлы и удаляют её.
+// Задание для человека: важность и срок, автор, исполнитель, проверяющий, клиент, описание и файлы.
+// Автор и владелец здесь же меняют задачу, прикрепляют файлы и удаляют её (удаление — отдельно, красной кнопкой).
 export function TeamTaskCard({
   task,
   businessName,
@@ -29,13 +29,13 @@ export function TeamTaskCard({
 }: {
   task: Task;
   businessName: string | null;
-  // Имена исполнителя и автора (id → имя).
+  // Имена автора, исполнителя и проверяющего (id → имя).
   people: Record<string, string>;
   // Автор задачи или владелец.
   canEdit: boolean;
   onChanged: () => void;
 }) {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<'upload' | 'delete' | null>(null);
 
@@ -59,10 +59,9 @@ export function TeamTaskCard({
 
   const draftAgent = agentById(task.draft_agent);
   const rows: [string, string | null][] = [
-    // due_date — день без времени: T12:00, чтобы часовой пояс не сдвинул дату.
-    [t('task.dueDate'), task.due_date && formatDate(`${task.due_date}T12:00:00`, language)],
-    [t('teamTasks.assignee'), task.assignee_id ? (people[task.assignee_id] ?? '—') : t('task.unassigned')],
     [t('teamTasks.createdBy'), task.created_by ? (people[task.created_by] ?? null) : null],
+    [t('teamTasks.assignee'), task.assignee_id ? (people[task.assignee_id] ?? '—') : t('task.unassigned')],
+    [t('teamTasks.reviewer'), task.reviewer_id ? (people[task.reviewer_id] ?? '—') : null],
     [t('teamTasks.client'), businessName],
     [t('teamTasks.description'), task.brief],
     // «Передать человеку»: описание и файлы — черновик этого агента.
@@ -71,9 +70,18 @@ export function TeamTaskCard({
 
   return (
     <Card>
-      <View style={styles.row}>
-        <Text style={[styles.cardTitle, { flex: 1 }]}>{t('teamTasks.assignment')}</Text>
+      <Text style={styles.cardTitle}>{t('teamTasks.assignment')}</Text>
+      {/* Срок рядом с важностью; просроченный, сегодняшний и завтрашний подсвечены, как на доске. */}
+      <View style={[styles.row, { flexWrap: 'wrap' }]}>
         <PriorityBadge priority={task.priority} quiet={false} />
+        {task.due_date ? (
+          <>
+            <Text style={styles.label}>{t('task.dueDate')}:</Text>
+            <DueBadge due={task.due_date} status={task.status} />
+          </>
+        ) : (
+          <Text style={styles.label}>{t('teamTasks.noDueDate')}</Text>
+        )}
       </View>
       {rows
         .filter(([, value]) => value)
@@ -120,9 +128,11 @@ export function TeamTaskCard({
             </NavList>
           )}
           <Button title={t('teamTasks.edit')} variant="ghost" onPress={() => router.push(`/team-tasks/edit?id=${task.id}`)} />
+          {/* Удаление — отдельно от остальных кнопок, красное, с подтверждением. */}
+          <View style={localStyles.danger} />
           <Button
             title={t('teamTasks.delete')}
-            variant="ghost"
+            variant="danger"
             loading={busy === 'delete'}
             onPress={() =>
               run('delete', async () => {
@@ -138,3 +148,7 @@ export function TeamTaskCard({
     </Card>
   );
 }
+
+const localStyles = StyleSheet.create({
+  danger: { height: 1, backgroundColor: colors.border, marginVertical: 8 },
+});

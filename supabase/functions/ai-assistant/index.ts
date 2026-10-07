@@ -12,6 +12,7 @@ import {
   MY_DAY_SYSTEM,
   ROLE_EN,
   TASK_SYSTEM,
+  TEAM_TASK_SYSTEM,
   type AssistantLanguage,
   type AssistantMode,
 } from './prompts.ts';
@@ -116,6 +117,7 @@ Deno.serve(async (req) => {
 
   let prompt: string | null;
   let taskId: string | null = null;
+  let teamTask = false;
   if (mode === 'my_day') {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Yerevan' });
     prompt = await myDayPrompt(db, auth.user.id, isManager, today);
@@ -128,11 +130,12 @@ Deno.serve(async (req) => {
       : null;
     if (!prompt) return json({ error: 'task not found' }, 404);
     taskId = body.task_id;
+    teamTask = context?.task.kind === 'team';
   }
 
   const who = `## Employee\n${profile?.full_name || 'Employee'}, role: ${ROLE_EN[role] ?? role}${profile?.job_title ? `, job title: ${profile.job_title}` : ''}`;
   const result = await askClaude(
-    mode === 'my_day' ? MY_DAY_SYSTEM : TASK_SYSTEM,
+    mode === 'my_day' ? MY_DAY_SYSTEM : teamTask ? TEAM_TASK_SYSTEM : TASK_SYSTEM,
     `${who}\n\n${prompt}\n\nAnswer in ${languageName(language)}.`,
   );
   if (!result.ok) return result.response;

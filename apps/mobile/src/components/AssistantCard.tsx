@@ -8,7 +8,8 @@ import { colors } from './theme';
 import { Button, Card, ErrorText, Field } from './ui';
 
 // AI-помощник сотрудника: без taskId — «Мой день», с taskId — разбор задачи и вопросы по ней.
-export function AssistantCard({ taskId }: { taskId?: string }) {
+// hint — своя подсказка (у задачи команды нет брифа клиента и его правок).
+export function AssistantCard({ taskId, hint }: { taskId?: string; hint?: string }) {
   const { t, language } = useI18n();
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export function AssistantCard({ taskId }: { taskId?: string }) {
   return (
     <Card>
       <Text style={styles.title}>{taskId ? t('assistant.taskTitle') : t('assistant.dayTitle')}</Text>
-      <Text style={styles.muted}>{taskId ? t('assistant.taskHint') : t('assistant.dayHint')}</Text>
+      <Text style={styles.muted}>{hint ?? (taskId ? t('assistant.taskHint') : t('assistant.dayHint'))}</Text>
       <Button
         title={
           loading === 'main'

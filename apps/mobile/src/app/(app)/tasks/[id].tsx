@@ -13,6 +13,7 @@ import { ClientFeedback, type Approval } from '@/components/task/ClientFeedback'
 import { Comments } from '@/components/task/Comments';
 import { PublishPanel } from '@/components/task/PublishPanel';
 import { ReviewPanel } from '@/components/task/ReviewPanel';
+import { TaskHistory } from '@/components/task/TaskHistory';
 import { TeamTaskCard } from '@/components/task/TeamTaskCard';
 import { Versions } from '@/components/task/Versions';
 import { WorkPanel } from '@/components/task/WorkPanel';
@@ -36,7 +37,7 @@ const WORKING_STATUSES = ['assigned', 'in_progress', 'changes_requested'];
 
 export default function TaskScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { language } = useI18n();
+  const { t, language } = useI18n();
   const { profile } = useAuth();
   const [task, setTask] = useState<TaskRow | null>(null);
   const [versions, setVersions] = useState<Deliverable[]>([]);
@@ -86,13 +87,14 @@ export default function TaskScreen() {
     const commentRows = (commentsRes.data as TaskComment[] | null) ?? [];
     setComments(commentRows);
 
-    // Имена авторов комментариев, а у задачи команды — ещё исполнителя и того, кто поставил.
+    // Имена авторов комментариев, а у задачи команды — ещё автора, исполнителя и проверяющего.
     const authorIds = [
       ...new Set(
         [
           ...commentRows.map((c) => c.author_id),
           taskRes.data?.kind === 'team' ? taskRes.data.assignee_id : null,
           taskRes.data?.kind === 'team' ? taskRes.data.created_by : null,
+          taskRes.data?.kind === 'team' ? (taskRes.data.reviewer_id ?? null) : null,
         ].filter((v): v is string => !!v),
       ),
     ];
@@ -178,7 +180,13 @@ export default function TaskScreen() {
         </>
       )}
 
-      {(isStaff || isAssignee) && <AssistantCard taskId={task.id} />}
+      {/* Задачу команды видят только её участники — помощник им всем. Без клиента — без брифа и правок клиента. */}
+      {(team || isStaff || isAssignee) && (
+        <AssistantCard
+          taskId={task.id}
+          hint={team ? t(task.business_id ? 'assistant.taskHintTeamClient' : 'assistant.taskHintTeam') : undefined}
+        />
+      )}
 
       {showAgentLaunch && (
         <AgentLaunch
@@ -233,6 +241,8 @@ export default function TaskScreen() {
         authors={authors}
         onAdded={load}
       />
+
+      {team && <TaskHistory key={`history-${revision}`} taskId={task.id} />}
 
       {!team && isManager && <AssignPanel key={`assign-${revision}`} task={task} onSaved={reload} />}
     </Screen>

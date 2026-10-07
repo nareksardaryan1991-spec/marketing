@@ -20,9 +20,11 @@ export function Button({
   title: string;
   onPress: () => void;
   loading?: boolean;
-  variant?: 'primary' | 'ghost';
+  // danger — красная кнопка опасного действия (удалить).
+  variant?: 'primary' | 'ghost' | 'danger';
 }) {
   const primary = variant === 'primary';
+  const danger = variant === 'danger';
   return (
     <Pressable
       accessibilityRole="button"
@@ -30,13 +32,13 @@ export function Button({
       disabled={loading}
       style={({ pressed }) => [
         styles.button,
-        primary ? styles.buttonPrimary : styles.buttonGhost,
+        primary ? styles.buttonPrimary : danger ? styles.buttonDanger : styles.buttonGhost,
         (pressed || loading) && { opacity: 0.7 },
       ]}>
       {loading ? (
-        <ActivityIndicator color={primary ? colors.primaryText : colors.primary} />
+        <ActivityIndicator color={primary || danger ? colors.primaryText : colors.primary} />
       ) : (
-        <Text style={[styles.buttonText, { color: primary ? colors.primaryText : colors.primary }]}>
+        <Text style={[styles.buttonText, { color: primary ? colors.primaryText : danger ? '#fff' : colors.primary }]}>
           {title}
         </Text>
       )}
@@ -77,6 +79,7 @@ const styles = StyleSheet.create({
   },
   buttonPrimary: { backgroundColor: colors.primary },
   buttonGhost: { backgroundColor: 'transparent' },
+  buttonDanger: { backgroundColor: colors.danger },
   buttonText: { fontSize: 16, fontWeight: '600' },
   field: { gap: 6 },
   label: { fontSize: 14, fontWeight: '500', color: colors.text },

@@ -16,6 +16,16 @@ export const TASK_STATUS_EN: Record<string, string> = {
   published: 'published',
 };
 
+// Задача команды: новая → в работе → на проверке → готово (без клиента).
+export const TEAM_STATUS_EN: Record<string, string> = {
+  new: 'not assigned yet',
+  assigned: 'assigned, not started',
+  in_progress: 'in progress',
+  changes_requested: 'returned for rework',
+  internal_review: 'submitted, waiting for the reviewer',
+  approved: 'done, accepted by the reviewer',
+};
+
 // deno-lint-ignore no-explicit-any
 export const nameOf = (service: any) => service?.name?.en ?? service?.name?.ru ?? '';
 
@@ -68,8 +78,10 @@ export async function loadTaskContext(db: SupabaseClient, taskId: string) {
       .join('\n')}`,
     t.orders?.notes ? `## Client notes for the order\n${t.orders.notes}` : '',
     `## This task\n${taskName(t)}, ` +
-      `${TASK_STATUS_EN[t.status] ?? t.status}${t.due_date ? `, due ${t.due_date}` : ''}`,
-    `## Manager brief\n${t.brief || '(empty)'}`,
+      `${t.kind === 'team' ? TEAM_STATUS_EN[t.status] ?? t.status : TASK_STATUS_EN[t.status] ?? t.status}` +
+      `${t.due_date ? `, due ${t.due_date}` : ''}`,
+    // У задачи команды не бриф клиента, а описание задания от автора.
+    t.kind === 'team' ? `## Task description\n${t.brief || '(empty)'}` : `## Manager brief\n${t.brief || '(empty)'}`,
     versions.length ? `## Submitted versions (newest first)\n${versions.join('\n')}` : '',
     approvals.length ? `## Client decisions (newest first)\n${approvals.join('\n')}` : '',
     (commentsRes.data ?? []).length
