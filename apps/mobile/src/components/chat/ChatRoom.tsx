@@ -1,5 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
@@ -146,8 +146,13 @@ export function ChatRoom({ chat, id, embedded }: ChatRef & { embedded?: boolean 
           : lastSeenText(info.peer?.last_seen_at, language, t)
         : '';
   const subtitleActive = room.typingNames.length > 0 || (!teamGeneral && !group && peerOnline);
+  // У группы шапка открывает «О группе».
   const header = (
-    <View style={styles.headerTitle}>
+    <Pressable
+      accessibilityRole={group ? 'button' : undefined}
+      disabled={!group}
+      onPress={() => router.push(`/group/${id}`)}
+      style={styles.headerTitle}>
       <Avatar
         name={teamGeneral || (group && !info?.avatar_path) ? '👥' : title || '?'}
         path={teamGeneral || isClient ? null : group ? info?.avatar_path : info?.peer?.avatar_path}
@@ -163,7 +168,7 @@ export function ChatRoom({ chat, id, embedded }: ChatRef & { embedded?: boolean 
           </Text>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 
   // Звонок: окно Jitsi открываем сразу по нажатию (иначе браузер заблокирует вкладку),

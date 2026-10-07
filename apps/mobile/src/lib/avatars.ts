@@ -6,8 +6,8 @@ import { supabase } from './supabase';
 
 const BUCKET = 'avatars';
 
-// wallpaper — своё фото фона чатов.
-export type ProfilePhoto = 'avatar' | 'cover' | 'wallpaper';
+// wallpaper — своё фото фона чатов, group — фото группового чата (лежит в папке того, кто загрузил).
+export type ProfilePhoto = 'avatar' | 'cover' | 'wallpaper' | 'group';
 
 // Цвета обложки на выбор в личном кабинете.
 export const ACCENT_COLORS = [
@@ -27,13 +27,13 @@ export function photoUrl(path: string | null | undefined): string | null {
   return path ? supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl : null;
 }
 
-// Фото профиля — квадрат 512 px, обложка и фон чатов — не шире 1200 px, все в JPEG.
+// Фото профиля и группы — квадрат 512 px, обложка и фон чатов — не шире 1200 px, все в JPEG.
 // Если фото не удалось прочитать (например, HEIC в браузере), загружаем как есть.
 async function prepare(asset: DocumentPicker.DocumentPickerAsset, kind: ProfilePhoto) {
   try {
     const context = ImageManipulator.manipulate(asset.uri);
     const { width, height } = await context.renderAsync();
-    if (kind === 'avatar') {
+    if (kind === 'avatar' || kind === 'group') {
       const side = Math.min(width, height);
       context.crop({
         originX: Math.floor((width - side) / 2),
