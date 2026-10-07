@@ -786,6 +786,35 @@ check('owner confirms the test payment', await waitText(ownerView, 'Оплата
 await outsider.reload({ waitUntil: 'networkidle0' });
 check('client sees the order paid', await waitText(outsider, 'Оплата получена'));
 
+// 7б. Групповой чат: менеджер создаёт группу, дизайнер её видит; менять группу может только создатель.
+await manager.goto(`${BASE}/chats`, { waitUntil: 'networkidle0' });
+await (await firstVisible(manager, '[aria-label="Новый чат"]')).click();
+await (await firstVisible(manager, '::-p-text(Новая группа)')).click();
+await (await firstVisible(manager, 'input[placeholder="Название группы"]')).type('E2E группа');
+for (const box of await manager.$$('[role="checkbox"]')) {
+  if ((await box.evaluate((el) => el.innerText)).includes('Ани Саргсян')) await box.click();
+}
+await (await firstVisible(manager, '::-p-text(Создать)')).click();
+// Окно менеджера здесь широкое: чат открывается справа, адрес остаётся /chats — id группы спрашиваем у сервера.
+check('manager creates a group and it opens', await waitText(manager, 'участников: 2'));
+const managerChats = await fetch(`${BASE}/rest/v1/rpc/my_chats`, {
+  method: 'POST', headers: { Authorization: 'Bearer demo:manager@demo.am', 'Content-Type': 'application/json' }, body: '{}',
+}).then((r) => r.json());
+const groupUrl = `${BASE}/team-chat/${managerChats.find((c) => c.title === 'E2E группа')?.id}`;
+await designer.goto(`${BASE}/chats`, { waitUntil: 'networkidle0' });
+check('the added colleague sees the group in the chat list', await waitText(designer, 'E2E группа'));
+await (await firstVisible(manager, '::-p-text(участников: 2)')).click();
+check('group header opens group info', await waitText(manager, 'Удалить группу'));
+const groupName = await firstVisible(manager, 'input');
+await groupName.click({ clickCount: 3 });
+await groupName.type('E2E группа 2');
+await (await firstVisible(manager, '::-p-text(Сохранить)')).click();
+await designer.goto(groupUrl, { waitUntil: 'networkidle0' });
+check('rename shows up for members as a service line', await waitText(designer, 'изменил(а) название: «E2E группа 2»'));
+await designer.goto(groupUrl.replace('/team-chat/', '/group/'), { waitUntil: 'networkidle0' });
+check('a plain member can leave but not manage the group',
+  await waitText(designer, 'Выйти из группы') && !(await text(designer)).includes('Удалить группу'));
+
 // 8. Вход сохранён, а пользователя на сервере больше нет (сброс демо) → экран входа, не ошибка.
 const ghost = await openAs(null);
 await ghost.goto(`${BASE}/sign-up`, { waitUntil: 'networkidle0' });
