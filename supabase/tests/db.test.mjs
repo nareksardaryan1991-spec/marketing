@@ -1428,6 +1428,101 @@ check('agents workload lists all six agents with running, review and weekly coun
   Number(agentsLoad.designer.to_review) === await sql(`select count(*) n from tasks t where status = 'internal_review' and (select agent from deliverables d where d.task_id = t.id order by version desc limit 1) = 'designer'`));
 check('agent load is not empty in this test run', dash.workload_agents.some(a => Number(a.running) + Number(a.done_week) + Number(a.to_review) > 0));
 
+// Групповые чаты: создаёт любой сотрудник, участники — только сотрудники; управляют создатель и владелец.
+const groupNotes = async (convId) => (await as(null,
+  `select user_id, kind, payload from notifications where payload ->> 'conversation_id' = $1 order by created_at`, [convId])).rows;
+const groupMsgs = async (user, convId) => (await as(user, 'select body, event, author_id from team_messages where conversation_id = $1 order by created_at', [convId])).rows;
+await fails('client cannot create a group', () => as(CLIENT, 'select create_group_chat($1, $2)', ['X', [MANAGER]]));
+const PENDING2 = 'cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd';
+await db.exec(`insert into auth.users values ('${PENDING2}', 'wait@x', '{"full_name":"Ждёт","account_type":"staff"}')`);
+await fails('pending user cannot create a group', () => as(PENDING2, 'select create_group_chat($1, $2)', ['X', [MANAGER]]));
+await fails('pending user cannot be added to a group', () => as(DESIGNER, 'select create_group_chat($1, $2)', ['X', [PENDING2]]));
+await fails('a group needs a name', () => as(DESIGNER, 'select create_group_chat($1, $2)', ['  ', [EMPLOYEE]]));
+await fails('a group needs at least one colleague', () => as(DESIGNER, 'select create_group_chat($1, $2)', ['X', [DESIGNER]]));
+await fails('clients cannot be added to a group', () => as(DESIGNER, 'select create_group_chat($1, $2)', ['X', [EMPLOYEE, CLIENT]]));
+const grp = (await as(DESIGNER, 'select create_group_chat($1, $2) as id', ['  Съёмка десертов ', [EMPLOYEE, FREELANCER, DESIGNER, EMPLOYEE]])).rows[0].id;
+const grpRow = (await as(DESIGNER, 'select * from my_chats() where id = $1', [grp])).rows[0];
+check('group is created: name trimmed, in the list with a «created» line',
+  grpRow?.kind === 'group' && grpRow.title === 'Съёмка десертов' && grpRow.last_event?.type === 'created');
+check('every member (employee, freelancer) has the group in the list',
+  (await as(EMPLOYEE, 'select id from my_chats() where id = $1', [grp])).rows.length === 1 &&
+  (await as(FREELANCER, 'select id from my_chats() where id = $1', [grp])).rows.length === 1);
+check('a manager outside the group does not see it or its messages',
+  (await as(MANAGER, 'select id from my_chats() where id = $1', [grp])).rows.length === 0 &&
+  (await groupMsgs(MANAGER, grp)).length === 0);
+await fails('an outsider cannot open the group info', () => as(MANAGER, `select chat_info('team', $1)`, [grp]));
+await fails('an outsider cannot write into the group', () => as(MANAGER, `insert into team_messages (conversation_id, body) values ($1, 'x')`, [grp]));
+let gi = (await as(EMPLOYEE, `select chat_info('team', $1) i`, [grp])).rows[0].i;
+check('group info: name, 3 members with roles, creator first, a member cannot manage',
+  gi.kind === 'group' && gi.title === 'Съёмка десертов' && gi.members === 3 && gi.member_list.length === 3 &&
+  gi.member_list[0].id === DESIGNER && gi.created_by === DESIGNER && gi.can_manage === false);
+check('the creator can manage', (await as(DESIGNER, `select chat_info('team', $1) i`, [grp])).rows[0].i.can_manage === true);
+
+await as(null, 'delete from notifications');
+await as(EMPLOYEE, `insert into team_messages (conversation_id, body) values ($1, 'Свет готов')`, [grp]);
+let gn = await groupNotes(grp);
+check('a group message notifies the other members with the group name, not outsiders',
+  gn.map(n => n.user_id).sort().join() === [DESIGNER, FREELANCER].sort().join() &&
+  gn.every(n => n.kind === 'team_chat_message' && n.payload.channel === 'group' && n.payload.title === 'Съёмка десертов'));
+
+for (const [fn, args] of [['rename_group_chat', [grp, 'Новое']], ['add_group_members', [grp, [MANAGER]]],
+  ['remove_group_member', [grp, EMPLOYEE]], ['delete_group_chat', [grp]], ['set_group_photo', [grp, `${FREELANCER}/g.jpg`]]]) {
+  await fails(`a member who did not create the group cannot ${fn}`, () => as(FREELANCER, `select ${fn}(${args.map((_, i) => '$' + (i + 1)).join(', ')})`, args));
+}
+await fails('an outsider manager cannot add themselves', () => as(MANAGER, 'select add_group_members($1, $2)', [grp, [MANAGER]]));
+
+await as(DESIGNER, 'select rename_group_chat($1, $2)', [grp, ' Съёмка: десерты ']);
+await as(DESIGNER, 'select rename_group_chat($1, $2)', [grp, 'Съёмка: десерты']);
+await fails('photo must be in your own folder', () => as(DESIGNER, 'select set_group_photo($1, $2)', [grp, `${MANAGER}/x.jpg`]));
+await as(DESIGNER, 'select set_group_photo($1, $2)', [grp, `${DESIGNER}/group.jpg`]);
+await as(null, 'delete from notifications');
+await fails('clients cannot be added later either', () => as(DESIGNER, 'select add_group_members($1, $2)', [grp, [CLIENT]]));
+await as(DESIGNER, 'select add_group_members($1, $2)', [grp, [MANAGER, EMPLOYEE]]);
+gn = await groupNotes(grp);
+check('only the newly added person is told «you were added», with the group name',
+  gn.length === 1 && gn[0].user_id === MANAGER && gn[0].kind === 'group_added' && gn[0].payload.title === 'Съёмка: десерты');
+check('a new member sees the earlier messages', (await groupMsgs(MANAGER, grp)).some(m => m.body === 'Свет готов'));
+let events = (await groupMsgs(DESIGNER, grp)).filter(m => m.event).map(m => m.event);
+check('service lines: created, renamed once, photo, added (only the new person, by name): ' + events.map(e => e.type).join(','),
+  events.map(e => e.type).join() === 'created,renamed,photo,added' && events[1].title === 'Съёмка: десерты' &&
+  JSON.stringify(events[3].names) === JSON.stringify(['Boss']));
+check('list shows the group photo and name', (await as(MANAGER, 'select title, avatar_path from my_chats() where id = $1', [grp])).rows[0].avatar_path === `${DESIGNER}/group.jpg`);
+
+const eventMsg = (await as(DESIGNER, 'select id from team_messages where conversation_id = $1 and event is not null limit 1', [grp])).rows[0].id;
+await fails('nobody writes service lines by hand', () => as(DESIGNER, `insert into team_messages (conversation_id, event) values ($1, '{"type":"added","users":[]}')`, [grp]));
+await fails('a service line cannot be edited', () => as(DESIGNER, `select edit_chat_message('team', $1, 'x')`, [eventMsg]));
+await fails('a service line cannot be deleted', () => as(DESIGNER, `select delete_chat_message('team', $1)`, [eventMsg]));
+
+await as(DESIGNER, 'select remove_group_member($1, $2)', [grp, FREELANCER]);
+check('a removed member loses the group and its messages',
+  (await as(FREELANCER, 'select id from my_chats() where id = $1', [grp])).rows.length === 0 &&
+  (await groupMsgs(FREELANCER, grp)).length === 0);
+await fails('the creator leaves with leave, not remove', () => as(DESIGNER, 'select remove_group_member($1, $2)', [grp, DESIGNER]));
+await fails('owner is not in the group — cannot manage it', () => as(ADMIN, 'select rename_group_chat($1, $2)', [grp, 'Y']));
+await as(DESIGNER, 'select add_group_members($1, $2)', [grp, [ADMIN]]);
+await fails('the creator (not the owner) cannot remove the owner', () => as(DESIGNER, 'select remove_group_member($1, $2)', [grp, ADMIN]));
+await as(ADMIN, 'select rename_group_chat($1, $2)', [grp, 'Съёмка (владелец)']);
+check('the owner in the group manages it', (await as(MANAGER, `select chat_info('team', $1) i`, [grp])).rows[0].i.title === 'Съёмка (владелец)');
+
+await as(DESIGNER, 'select leave_group_chat($1)', [grp]);
+gi = (await as(EMPLOYEE, `select chat_info('team', $1) i`, [grp])).rows[0].i;
+check('the creator left: a line «left», control goes to the longest member',
+  gi.created_by !== DESIGNER && [MANAGER, EMPLOYEE, ADMIN].includes(gi.created_by) &&
+  (await groupMsgs(EMPLOYEE, grp)).at(-1).event?.type === 'left' &&
+  (await as(DESIGNER, 'select id from my_chats() where id = $1', [grp])).rows.length === 0);
+const heir = gi.created_by;
+await as(heir, 'select rename_group_chat($1, $2)', [grp, 'Съёмка 2']);
+check('the new creator can rename', (await as(EMPLOYEE, `select chat_info('team', $1) i`, [grp])).rows[0].i.title === 'Съёмка 2');
+await fails('a plain member cannot delete the group', () => as([MANAGER, EMPLOYEE].find(u => u !== heir), 'select delete_group_chat($1)', [grp]));
+await as(heir, 'select delete_group_chat($1)', [grp]);
+check('deleted group is gone with its messages', (await as(null, 'select count(*)::int n from team_messages where conversation_id = $1', [grp])).rows[0].n === 0 &&
+  (await as(EMPLOYEE, 'select id from my_chats() where id = $1', [grp])).rows.length === 0);
+const pair = (await as(MANAGER, 'select create_group_chat($1, $2) as id', ['Двое', [EMPLOYEE]])).rows[0].id;
+await as(MANAGER, 'select leave_group_chat($1)', [pair]);
+await as(EMPLOYEE, 'select leave_group_chat($1)', [pair]);
+check('when the last member leaves, the group is deleted', (await as(null, 'select count(*)::int n from conversations where id = $1', [pair])).rows[0].n === 0);
+await fails('leave works only for groups', () => as(MANAGER, 'select leave_group_chat($1)', ['00000000-0000-4000-8000-00000000c0de']));
+
 // Аудит функций: security definer — только с search_path; новые функции задач команды — не для anon,
 // служебные (проверки, триггеры) — вообще не для пользователей.
 const unsafe = (await as(null, `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -1441,7 +1536,7 @@ const anonOpen = [];
 for (const fn of userFns) if (await canRun('anon', fn)) anonOpen.push(fn);
 check('team task functions are closed to anonymous visitors: ' + anonOpen.join(), anonOpen.length === 0);
 const internalOpen = [];
-for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created', 'task_payload', 'notify_users', 'team_task_for_edit', 'set_task_watchers', 'log_team_task', 'user_sees_team_task', 'skip_hidden_task_notification'])
+for (const fn of ['team_task_business', 'check_team_assignee', 'on_task_created', 'task_payload', 'notify_users', 'team_task_for_edit', 'set_task_watchers', 'log_team_task', 'user_sees_team_task', 'skip_hidden_task_notification', 'post_group_event', 'group_for_manage', 'check_group_people', 'ensure_group_creator', 'guard_group_event'])
   for (const role of ['anon', 'authenticated']) if (await canRun(role, fn)) internalOpen.push(`${fn}:${role}`);
 check('internal helpers are not callable by users: ' + internalOpen.join(), internalOpen.length === 0);
 

@@ -93,10 +93,16 @@ const T: Record<string, Record<Lang, Template>> = {
     hy: (v) => `Չհաջողվեց հրապարակել Instagram-ում՝ ${v.service} #${v.number} — ${v.business}\n${v.error}\nՀրապարակեք ձեռքով կամ ուղղեք ֆայլերը և փոխեք ամսաթիվը։`,
     en: (v) => `Instagram publishing failed: ${v.service} #${v.number} — ${v.business}\n${v.error}\nPublish manually, or fix the files and reschedule.`,
   },
+  // Общий чат — «Чат команды — автор», группа — ««Название» — автор», личная беседа — только автор.
   team_chat_message: {
-    ru: (v) => `${v.channel === 'team' ? 'Чат команды — ' : ''}${v.author}:\n${v.preview}`,
-    hy: (v) => `${v.channel === 'team' ? 'Թիմի չատ — ' : ''}${v.author}՝\n${v.preview}`,
-    en: (v) => `${v.channel === 'team' ? 'Team chat — ' : ''}${v.author}:\n${v.preview}`,
+    ru: (v) => `${v.channel === 'team' ? 'Чат команды — ' : v.channel === 'group' ? `«${v.title}» — ` : ''}${v.author}:\n${v.preview}`,
+    hy: (v) => `${v.channel === 'team' ? 'Թիմի չատ — ' : v.channel === 'group' ? `«${v.title}» — ` : ''}${v.author}՝\n${v.preview}`,
+    en: (v) => `${v.channel === 'team' ? 'Team chat — ' : v.channel === 'group' ? `"${v.title}" — ` : ''}${v.author}:\n${v.preview}`,
+  },
+  group_added: {
+    ru: (v) => `👥 ${v.author} добавил(а) вас в группу «${v.title}»`,
+    hy: (v) => `👥 ${v.author}-ը ձեզ ավելացրել է «${v.title}» խմբին`,
+    en: (v) => `👥 ${v.author} added you to the group "${v.title}"`,
   },
   incoming_call: {
     ru: (v) => `${v.video === 'true' ? '🎥 Видеозвонок' : '📞 Звонок'} от ${v.author}${v.business ? ` (${v.business})` : ''}\nПрисоединиться: ${v.call_url}`,
