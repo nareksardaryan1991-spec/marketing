@@ -1,23 +1,50 @@
-import { Stack } from 'expo-router';
+import { useFonts } from 'expo-font';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type Theme } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { colors } from '@/components/theme';
+import { colors, fonts, theme, themeName } from '@/components/theme';
+import { THEME_FONTS } from '@/components/themeFonts';
 import { Button } from '@/components/ui';
 import { LanguageProvider, useI18n } from '@/i18n';
 import '@/lib/webApp';
 import { AuthProvider, isNetworkError, useAuth } from '@/providers/AuthProvider';
 
+// Тема навигации: фон под экранами и шапки — в цветах оформления, иначе при переходах мелькает белый.
+const baseNavTheme = theme.isDark ? DarkTheme : DefaultTheme;
+const navTheme: Theme = {
+  ...baseNavTheme,
+  colors: {
+    ...baseNavTheme.colors,
+    primary: colors.primary,
+    background: colors.background,
+    card: colors.background,
+    text: colors.text,
+    border: colors.border,
+    notification: colors.danger,
+  },
+  fonts: {
+    regular: { fontFamily: fonts.regular, fontWeight: '400' },
+    medium: { fontFamily: fonts.medium, fontWeight: '500' },
+    bold: { fontFamily: fonts.semibold, fontWeight: '600' },
+    heavy: { fontFamily: fonts.bold, fontWeight: '700' },
+  },
+};
+
 export default function RootLayout() {
+  // Только шрифты выбранного оформления. Пока они грузятся, текст показывается системным шрифтом — экран не ждёт.
+  useFonts(THEME_FONTS[themeName].all);
   return (
     <SafeAreaProvider>
-      <LanguageProvider>
-        <AuthProvider>
-          <RootNavigator />
-          <StatusBar style="dark" />
-        </AuthProvider>
-      </LanguageProvider>
+      <ThemeProvider value={navTheme}>
+        <LanguageProvider>
+          <AuthProvider>
+            <RootNavigator />
+            <StatusBar style={theme.isDark ? 'light' : 'dark'} />
+          </AuthProvider>
+        </LanguageProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

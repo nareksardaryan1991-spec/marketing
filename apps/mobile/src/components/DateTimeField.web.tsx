@@ -36,8 +36,10 @@ export function DateTimeField({ label, value, onChange, mode }: DateTimeFieldPro
             flex: 1,
             minHeight: 48,
             border: `1px solid ${colors.border}`,
-            borderRadius: 12,
+            borderRadius: 14,
             padding: '0 14px',
+            // Значок календаря и окно выбора даты браузер рисует в тёмных цветах.
+            colorScheme: 'dark',
             fontSize: 16,
             color: colors.text,
             backgroundColor: colors.surface,

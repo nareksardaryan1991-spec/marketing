@@ -3,7 +3,7 @@ import { StyleSheet, Text } from 'react-native';
 
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Screen } from '@/components/Screen';
-import { colors } from '@/components/theme';
+import { colors, fonts } from '@/components/theme';
 import { Button, Card } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { useAuth } from '@/providers/AuthProvider';
@@ -34,6 +34,6 @@ export default function PendingScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 26, fontWeight: '700', color: colors.text, marginTop: 16 },
+  title: { fontSize: 24, fontFamily: fonts.display, color: colors.text, marginTop: 16 },
   text: { fontSize: 16, color: colors.text },
 });

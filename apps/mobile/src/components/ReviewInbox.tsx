@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { useI18n } from '@/i18n';
 import { supabase } from '@/lib/supabase';
+import { colors, fonts, outlined } from '@/components/theme';
 
 // Для клиента: сколько материалов ждут его решения — ведёт на экран «На согласовании».
 export function ReviewInbox() {
@@ -38,9 +39,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     padding: 16,
-    borderRadius: 16,
-    backgroundColor: '#FCE7F3',
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    ...outlined,
   },
-  text: { flex: 1, fontSize: 16, fontWeight: '600', color: '#9D174D' },
-  arrow: { fontSize: 24, color: '#9D174D' },
+  text: { flex: 1, fontSize: 16, fontWeight: '600', fontFamily: fonts.semibold, color: colors.primaryText },
+  arrow: { fontSize: 24, color: colors.primaryText },
 });

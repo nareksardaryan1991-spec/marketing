@@ -6,7 +6,7 @@ import { useMoney } from '@/lib/money';
 import { serviceLabel } from '@/lib/platforms';
 import type { Package, Platform, PlatformService, Service } from '@/lib/types';
 
-import { colors } from './theme';
+import { colors, tints } from './theme';
 
 type Catalog = { platforms: Platform[]; offers: PlatformService[]; services: Service[] };
 
@@ -105,8 +105,8 @@ const styles = StyleSheet.create({
   dot: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.border },
   dotActive: { borderColor: colors.primary, borderWidth: 6 },
   name: { flex: 1, fontSize: 18, fontWeight: '600', color: colors.text },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: '#DCFCE7' },
-  badgeText: { fontSize: 13, fontWeight: '700', color: '#166534' },
+  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: tints.green.bg },
+  badgeText: { fontSize: 13, fontWeight: '700', color: tints.green.fg },
   muted: { fontSize: 14, color: colors.muted },
   item: { fontSize: 15, color: colors.text },
   priceRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginTop: 4 },

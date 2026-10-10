@@ -18,7 +18,7 @@ import { TeamTaskCard } from '@/components/task/TeamTaskCard';
 import { Versions } from '@/components/task/Versions';
 import { WorkPanel } from '@/components/task/WorkPanel';
 import { TaskStatusBadge } from '@/components/TaskStatusBadge';
-import { colors } from '@/components/theme';
+import { colors, fonts } from '@/components/theme';
 import { ErrorText } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { AGENT_TASK_STATUSES, agentsForService } from '@/lib/agents';
@@ -31,6 +31,8 @@ import { canUseAgents, isManagerRole, isTeamRole } from '@/lib/roles';
 type TaskRow = Task & {
   services: { name: Localized } | null;
   businesses: Business | null;
+  // Проект задачи команды (0038).
+  team_projects?: { name: string } | null;
 };
 
 const WORKING_STATUSES = ['assigned', 'in_progress', 'changes_requested'];
@@ -54,7 +56,7 @@ export default function TaskScreen() {
     const [taskRes, versionsRes, notesRes, commentsRes, approvalsRes, orderNotesRes] = await Promise.all([
       supabase
         .from('tasks')
-        .select('*, services(name), businesses(*)')
+        .select('*, services(name), businesses(*), team_projects(name)')
         .eq('id', id)
         .single<TaskRow>(),
       supabase
@@ -155,6 +157,7 @@ export default function TaskScreen() {
             key={`team-${revision}`}
             task={task}
             businessName={task.businesses?.name ?? null}
+            projectName={task.team_projects?.name ?? null}
             people={authors}
             // Менять и удалять задачу команды — автор и владелец (как в базе, can_edit_team_task).
             canEdit={isOwner || (isManager && task.created_by === profile.id)}
@@ -252,5 +255,5 @@ export default function TaskScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  title: { flex: 1, fontSize: 22, fontWeight: '700', color: colors.text },
+  title: { flex: 1, fontSize: 20, fontFamily: fonts.display, color: colors.text },
 });

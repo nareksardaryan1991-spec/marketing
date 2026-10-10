@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Avatar } from '@/components/Avatar';
 import { CheckList } from '@/components/Choice';
 import { Screen } from '@/components/Screen';
-import { colors } from '@/components/theme';
+import { colors, fonts } from '@/components/theme';
 import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { pickProfilePhoto } from '@/lib/avatars';
@@ -231,11 +231,11 @@ export default function GroupInfoScreen() {
 
 const styles = StyleSheet.create({
   head: { alignItems: 'center', gap: 6, paddingVertical: 8 },
-  title: { fontSize: 22, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  title: { fontSize: 20, fontFamily: fonts.display, color: colors.text, textAlign: 'center' },
   cardTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
   label: { fontSize: 15, fontWeight: '600', color: colors.text, marginTop: 8 },
   muted: { fontSize: 13, color: colors.muted },
-  online: { color: '#16A34A' },
+  online: { color: colors.primary },
   member: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
   memberText: { flex: 1, minWidth: 0 },
   memberName: { fontSize: 16, fontWeight: '600', color: colors.text },

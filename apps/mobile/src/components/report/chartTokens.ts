@@ -1,11 +1,11 @@
-import { colors } from '../theme';
+import { colors, theme } from '../theme';
 
-// Цвета графиков (проверены validate_palette из навыка dataviz на белом фоне).
+// Цвета графиков: акцент — главное, серый — приглушённое (свои для каждого оформления).
 export const chart = {
   accent: colors.primary,
   // Приглушённые метки в форме «выделение»: не лучший пост.
-  deemphasis: '#C3C2B7',
-  up: '#006300',
+  deemphasis: theme.chart.deemphasis,
+  up: theme.chart.up,
   down: colors.danger,
 };
 

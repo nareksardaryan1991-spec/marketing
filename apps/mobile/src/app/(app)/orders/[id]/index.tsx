@@ -6,7 +6,7 @@ import { NavList, NavRow } from '@/components/NavList';
 import { OrderTasks } from '@/components/OrderTasks';
 import { Screen } from '@/components/Screen';
 import { StatusBadge } from '@/components/StatusBadge';
-import { colors } from '@/components/theme';
+import { colors, fonts } from '@/components/theme';
 import { Button, Card, ErrorText } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { formatDate, localized } from '@/lib/format';
@@ -256,7 +256,7 @@ export default function OrderScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  title: { flex: 1, fontSize: 22, fontWeight: '700', color: colors.text },
+  title: { flex: 1, fontSize: 20, fontFamily: fonts.display, color: colors.text },
   section: { fontSize: 18, fontWeight: '600', color: colors.text },
   cardTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },

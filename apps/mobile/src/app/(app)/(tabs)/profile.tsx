@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChatBackground } from '@/components/chat/ChatBackground';
-import { WALLPAPERS } from '@/components/chat/chatTheme';
+import { chatColors, WALLPAPERS } from '@/components/chat/chatTheme';
 import { Choice } from '@/components/Choice';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { NavList, NavRow } from '@/components/NavList';
 import { ProfileHeader } from '@/components/ProfileHeader';
 import { Screen } from '@/components/Screen';
-import { colors } from '@/components/theme';
+import { colors, setThemeName, themeName, type ThemeName } from '@/components/theme';
 import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { ACCENT_COLORS, pickProfilePhoto, removeProfilePhotos, type ProfilePhoto } from '@/lib/avatars';
@@ -28,6 +28,7 @@ export default function ProfileScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [chosenTheme, setChosenTheme] = useState<ThemeName>(themeName);
   const [password, setPassword] = useState('');
 
   if (!profile) return null;
@@ -242,6 +243,24 @@ export default function ProfileScreen() {
       </Card>
 
       <Card>
+        <Text style={styles.cardTitle}>{t('profile.theme')}</Text>
+        <Choice
+          value={chosenTheme}
+          onChange={(name: ThemeName) => {
+            setChosenTheme(name);
+            // В браузере страница перезагрузится сама; в приложении — подсказка про перезапуск ниже.
+            setThemeName(name);
+          }}
+          options={[
+            { value: 'dark', label: t('profile.themeDark'), hint: t('profile.themeDarkHint') },
+            { value: 'bright', label: t('profile.themeBright'), hint: t('profile.themeBrightHint') },
+            { value: 'bold', label: t('profile.themeBold'), hint: t('profile.themeBoldHint') },
+            { value: 'story', label: t('profile.themeStory'), hint: t('profile.themeStoryHint') },
+          ]}
+        />
+        {chosenTheme !== themeName && <Text style={styles.muted}>{t('profile.themeRestart')}</Text>}
+      </Card>
+      <Card>
         <Text style={styles.cardTitle}>{t('common.language')}</Text>
         <LanguageSwitcher />
       </Card>
@@ -295,7 +314,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
   label: { fontSize: 14, fontWeight: '500', color: colors.text, marginTop: 8 },
   muted: { fontSize: 15, color: colors.muted },
-  notice: { fontSize: 15, color: '#059669' },
+  notice: { fontSize: 15, color: colors.success },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: 'transparent' },
@@ -309,8 +328,8 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: 'transparent',
   },
-  wallpaperSelected: { borderColor: '#2F8CF0' },
+  wallpaperSelected: { borderColor: colors.primary },
   miniBubble: { height: 12, borderRadius: 6, marginHorizontal: 6, marginTop: 10 },
-  miniTheirs: { width: 34, backgroundColor: '#FFFFFF' },
-  miniMine: { width: 30, alignSelf: 'flex-end', backgroundColor: '#DCEEFF' },
+  miniTheirs: { width: 34, backgroundColor: chatColors.theirs },
+  miniMine: { width: 30, alignSelf: 'flex-end', backgroundColor: chatColors.mine },
 });

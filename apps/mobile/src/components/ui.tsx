@@ -9,7 +9,7 @@ import {
   type TextInputProps,
 } from 'react-native';
 
-import { colors } from './theme';
+import { colors, fonts, outlined, outlinedSmall } from './theme';
 
 export function Button({
   title,
@@ -38,7 +38,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={primary || danger ? colors.primaryText : colors.primary} />
       ) : (
-        <Text style={[styles.buttonText, { color: primary ? colors.primaryText : danger ? '#fff' : colors.primary }]}>
+        <Text style={[styles.buttonText, { color: primary ? colors.primaryText : danger ? colors.dangerText : colors.primary }]}>
           {title}
         </Text>
       )}
@@ -71,37 +71,37 @@ export function ErrorText({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 48,
-    borderRadius: 12,
+    minHeight: 50,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
-  buttonPrimary: { backgroundColor: colors.primary },
+  buttonPrimary: { backgroundColor: colors.primary, ...outlinedSmall },
   buttonGhost: { backgroundColor: 'transparent' },
-  buttonDanger: { backgroundColor: colors.danger },
-  buttonText: { fontSize: 16, fontWeight: '600' },
+  buttonDanger: { backgroundColor: colors.danger, ...outlinedSmall },
+  buttonText: { fontSize: 16, fontWeight: '600', fontFamily: fonts.semibold },
   field: { gap: 6 },
-  label: { fontSize: 14, fontWeight: '500', color: colors.text },
+  label: { fontSize: 14, fontWeight: '500', fontFamily: fonts.medium, color: colors.muted },
   input: {
     minHeight: 48,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
+    fontFamily: fonts.regular,
     color: colors.text,
     backgroundColor: colors.surface,
   },
   inputMultiline: { minHeight: 96, textAlignVertical: 'top' },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
+    borderRadius: 22,
     padding: 16,
     gap: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
+    ...outlined,
   },
   error: { color: colors.danger, fontSize: 14 },
 });

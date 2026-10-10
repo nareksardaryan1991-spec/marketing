@@ -37,9 +37,12 @@ check('identities created', (await q('select count(*)::int n from auth.identitie
 const tasks = await q(`select platform_id || '/' || service_id || number as t, status from public.tasks where kind = 'order' order by platform_id, service_id, number`);
 console.log('   tasks:', tasks.map(t => `${t.t}=${t.status}`).join(' '));
 check('7 tasks in varied states', tasks.length === 7 && new Set(tasks.map(t => t.status)).size === 7);
-const team = await q(`select t.title, t.status, p.email from public.tasks t left join public.profiles p on p.id = t.assignee_id where t.kind = 'team' order by t.title`);
-check('3 team tasks: employee works, designer under review, one unassigned',
-  team.map(t => `${t.status}:${t.email ?? '-'}`).join(' ') === 'internal_review:designer@demo.am new:- in_progress:employee@demo.am');
+const team = await q(`select t.title, t.status, p.email, pr.name project, t.tags from public.tasks t left join public.profiles p on p.id = t.assignee_id left join public.team_projects pr on pr.id = t.project_id where t.kind = 'team' order by t.title`);
+check('4 team tasks: employee works and has an overdue report, designer under review, one unassigned',
+  team.map(t => `${t.status}:${t.email ?? '-'}`).join(' ') ===
+    'internal_review:designer@demo.am assigned:employee@demo.am new:- in_progress:employee@demo.am');
+check('team tasks have projects and tags',
+  team.filter(t => t.project).length === 3 && team.every(t => t.tags.length > 0));
 check('employee has a job title', (await q(`select job_title from public.profiles where email = 'employee@demo.am'`))[0].job_title === 'Фотограф');
 check('order in progress, paid', (await q(`select status, paid_at from public.orders`))[0].status === 'in_progress');
 check('demo business has finished onboarding and has a brand', (await q(`select onboarded_at, brand_colors from public.businesses`))[0].onboarded_at !== null);

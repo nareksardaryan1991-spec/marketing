@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '@/components/Screen';
-import { colors } from '@/components/theme';
+import { colors, fonts } from '@/components/theme';
 import { Button, Card, ErrorText } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { formatAmd, formatDateTime } from '@/lib/format';
@@ -91,7 +91,7 @@ export default function ReceiptScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
-  title: { fontSize: 20, fontWeight: '700', color: colors.text },
+  title: { fontSize: 20, fontFamily: fonts.display, color: colors.text },
   muted: { fontSize: 14, color: colors.muted },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   text: { flexShrink: 1, fontSize: 15, color: colors.text },

@@ -1,4 +1,4 @@
-import { Link, router, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
@@ -15,15 +15,13 @@ import { dueTone } from '@/lib/due';
 import { taskTitle } from '@/lib/platforms';
 import { isManagerRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
-import type { Localized, Profile, Task, TaskKind, TaskStatus } from '@/lib/types';
+import type { Localized, Profile, Task, TaskStatus } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
 import { Avatar } from './Avatar';
 import { DueBadge } from './DueBadge';
-import { PriorityBadge } from './PriorityBadge';
-import { TaskStatusBadge } from './TaskStatusBadge';
-import { colors } from './theme';
-import { Button, ErrorText } from './ui';
+import { colors, fonts, outlined } from './theme';
+import { ErrorText } from './ui';
 
 type Row = Task & {
   services: { name: Localized } | null;
@@ -35,40 +33,25 @@ type Person = Pick<Profile, 'id' | 'full_name' | 'email' | 'avatar_path' | 'acce
 type Column = { key: string; statuses: TaskStatus[]; color: string };
 
 // Колонки доски — этапы работы. Последняя колонка — завершённые (показываются последние DONE_LIMIT).
-const COLUMNS: Record<TaskKind, Column[]> = {
-  order: [
-    { key: 'new', statuses: ['new'], color: '#F59E0B' },
-    { key: 'work', statuses: ['assigned', 'in_progress', 'changes_requested'], color: '#6366F1' },
-    { key: 'review', statuses: ['internal_review'], color: '#A855F7' },
-    { key: 'client', statuses: ['client_review'], color: '#EC4899' },
-    { key: 'publish', statuses: ['approved', 'publishing'], color: '#14B8A6' },
-    { key: 'done', statuses: ['published'], color: '#6B7280' },
-  ],
-  // Задачи команды: новая → в работе → на проверке → готово.
-  team: [
-    { key: 'new', statuses: ['new', 'assigned'], color: '#F59E0B' },
-    { key: 'work', statuses: ['in_progress', 'changes_requested'], color: '#6366F1' },
-    { key: 'review', statuses: ['internal_review'], color: '#A855F7' },
-    { key: 'done', statuses: ['approved'], color: '#16A34A' },
-  ],
-};
-const DONE: Record<TaskKind, { status: TaskStatus; order: string }> = {
-  order: { status: 'published', order: 'published_at' },
-  team: { status: 'approved', order: 'updated_at' },
-};
+const COLUMNS: Column[] = [
+  { key: 'new', statuses: ['new'], color: '#F59E0B' },
+  { key: 'work', statuses: ['assigned', 'in_progress', 'changes_requested'], color: '#6366F1' },
+  { key: 'review', statuses: ['internal_review'], color: '#A855F7' },
+  { key: 'client', statuses: ['client_review'], color: '#EC4899' },
+  { key: 'publish', statuses: ['approved', 'publishing'], color: '#14B8A6' },
+  { key: 'done', statuses: ['published'], color: '#6B7280' },
+];
 
 // Завершённых показываем только последние — иначе колонка растёт бесконечно.
 const DONE_LIMIT = 20;
 const WIDE = 900;
 
-// Доска задач. Работа по заказам (вкладка «Доска»): менеджер и владелец видят все задачи, остальные — свои.
-// Задачи команды (вкладка «Команда»): каждый видит то, что ему разрешает база (автор, исполнитель,
-// проверяющий, отмеченные, владелец — все), фильтры — «Все» и люди с числом задач, плюс статус.
-export function TaskBoard({ kind }: { kind: TaskKind }) {
+// Доска работы по заказам (вкладка «Доска»): менеджер и владелец видят все задачи, остальные — свои.
+// Задачи команды — отдельный раздел (components/teamTasks).
+export function TaskBoard() {
   const { t, language } = useI18n();
-  const columns = COLUMNS[kind];
-  const done = DONE[kind];
-  const label = (key: string) => t(kind === 'team' ? `teamTasks.columns.${key}` : `board.${key}`);
+  const columns = COLUMNS;
+  const label = (key: string) => t(`board.${key}`);
   const { profile } = useAuth();
   const manager = isManagerRole(profile?.role);
   const wide = useWindowDimensions().width >= WIDE;
@@ -78,9 +61,8 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
   const [assignee, setAssignee] = useState<string>('all');
   const [business, setBusiness] = useState<string>('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
-  const [column, setColumn] = useState(kind === 'team' ? 'all' : 'work');
-  // Задачи команды фильтруются по людям для всех: в списке есть не только свои задачи.
-  const byPeople = manager || kind === 'team';
+  const [column, setColumn] = useState('work');
+  const byPeople = manager;
 
   useFocusEffect(
     useCallback(() => {
@@ -88,24 +70,24 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
       let active = supabase
         .from('tasks')
         .select(select)
-        .eq('kind', kind)
-        .neq('status', done.status)
+        .eq('kind', 'order')
+        .neq('status', 'published')
         .order('due_date', { ascending: true, nullsFirst: false });
       let finished = supabase
         .from('tasks')
         .select(select)
-        .eq('kind', kind)
-        .eq('status', done.status)
-        .order(done.order, { ascending: false })
+        .eq('kind', 'order')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false })
         .limit(DONE_LIMIT);
-      if (!manager && profile && kind === 'order') {
+      if (!manager && profile) {
         active = active.eq('assignee_id', profile.id);
         finished = finished.eq('assignee_id', profile.id);
       }
       Promise.all([
         active,
         finished,
-        manager || kind === 'team'
+        manager
           ? supabase
               .from('profiles')
               .select('id, full_name, email, avatar_path, accent_color')
@@ -117,7 +99,7 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
         setTasks([...((a.data as Row[] | null) ?? []), ...((d.data as Row[] | null) ?? [])]);
         setPeople((p.data as Person[] | null) ?? []);
       });
-    }, [manager, profile, kind, done]),
+    }, [manager, profile]),
   );
 
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
@@ -127,34 +109,16 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [tasks]);
 
-  const inColumn = (task: Row, key: string) =>
-    key === 'all' || columns.find((c) => c.key === key)!.statuses.includes(task.status);
-  // Всё, кроме фильтра по человеку: из этого считаются числа на чипах людей.
+  const inColumn = (task: Row, key: string) => columns.find((c) => c.key === key)!.statuses.includes(task.status);
   const filtered = tasks.filter(
     (task) =>
       (business === 'all' || task.business_id === business) &&
-      (!overdueOnly || dueTone(task.due_date, task.status) === 'overdue') &&
-      (kind === 'order' || inColumn(task, column)),
+      (!overdueOnly || dueTone(task.due_date, task.status) === 'overdue'),
   );
   const shown = filtered.filter(
     (task) => assignee === 'all' || (assignee === 'none' ? !task.assignee_id : task.assignee_id === assignee),
   );
   const columnTasks = (key: string) => shown.filter((task) => inColumn(task, key));
-  const statusTasks = (key: string) =>
-    tasks.filter(
-      (task) =>
-        inColumn(task, key) &&
-        (business === 'all' || task.business_id === business) &&
-        (!overdueOnly || dueTone(task.due_date, task.status) === 'overdue') &&
-        (assignee === 'all' || (assignee === 'none' ? !task.assignee_id : task.assignee_id === assignee)),
-    );
-
-  // Чипы людей: в задачах команды — только те, чьи задачи человеку видны, с числом задач.
-  const countOf = (id: string) => filtered.filter((task) => task.assignee_id === id).length;
-  const chipPeople =
-    kind === 'team' ? people.filter((p) => tasks.some((task) => task.assignee_id === p.id)) : people;
-  const unassigned = filtered.filter((task) => !task.assignee_id).length;
-  const withCount = (label: string, n: number) => (kind === 'team' ? `${label} ${n}` : label);
 
   const card = (task: Row) => {
     const person = task.assignee_id ? byId.get(task.assignee_id) : undefined;
@@ -169,8 +133,6 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
           {!!task.businesses?.name && <Text style={styles.cardBusiness}>{task.businesses.name}</Text>}
           <View style={styles.cardFooter}>
             <View style={[styles.flex, styles.badges]}>
-              {kind === 'team' && column === 'all' && <TaskStatusBadge status={task.status} kind="team" />}
-              {kind === 'team' && <PriorityBadge priority={task.priority} />}
               <DueBadge due={task.due_date} status={task.status} />
             </View>
             {byPeople &&
@@ -198,41 +160,21 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
-      {kind === 'team' && manager && (
-        <View style={styles.actions}>
-          <Button title={`＋ ${t('teamTasks.new')}`} onPress={() => router.push('/team-tasks/edit')} />
-        </View>
-      )}
       <View style={styles.filters}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip} contentContainerStyle={styles.chips}>
           {chip('overdue', `🔴 ${t('board.overdue')}`, overdueOnly, () => setOverdueOnly(!overdueOnly), true)}
-          {byPeople && chip('all', withCount(t('board.everyone'), filtered.length), assignee === 'all', () => setAssignee('all'))}
+          {byPeople && chip('all', t('board.everyone'), assignee === 'all', () => setAssignee('all'))}
+          {byPeople && chip('none', t('board.noAssignee'), assignee === 'none', () => setAssignee('none'))}
           {byPeople &&
-            (kind === 'order' || unassigned > 0) &&
-            chip('none', withCount(t('board.noAssignee'), unassigned), assignee === 'none', () => setAssignee('none'))}
-          {byPeople &&
-            chipPeople.map((p) =>
+            people.map((p) =>
               chip(
                 p.id,
-                withCount((p.full_name || p.email || '?').split(' ')[0], countOf(p.id)),
+                (p.full_name || p.email || '?').split(' ')[0],
                 assignee === p.id,
                 () => setAssignee(assignee === p.id ? 'all' : p.id),
               ),
             )}
         </ScrollView>
-        {/* Задачи команды: фильтр по статусу — «Все» или один этап. */}
-        {kind === 'team' && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip} contentContainerStyle={styles.chips}>
-            {[{ key: 'all' }, ...columns].map((c) =>
-              chip(
-                `s-${c.key}`,
-                `${c.key === 'all' ? t('teamTasks.allStatuses') : label(c.key)} ${statusTasks(c.key).length}`,
-                column === c.key,
-                () => setColumn(c.key),
-              ),
-            )}
-          </ScrollView>
-        )}
         {businesses.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip} contentContainerStyle={styles.chips}>
             {chip('b-all', t('board.allClients'), business === 'all', () => setBusiness('all'))}
@@ -246,7 +188,7 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
 
       {wide ? (
         <ScrollView horizontal contentContainerStyle={styles.columns}>
-          {columns.filter((c) => kind === 'order' || column === 'all' || column === c.key).map((c) => {
+          {columns.map((c) => {
             const list = columnTasks(c.key);
             return (
               <View key={c.key} style={styles.column}>
@@ -263,11 +205,6 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
             );
           })}
         </ScrollView>
-      ) : kind === 'team' ? (
-        <ScrollView contentContainerStyle={styles.cards}>
-          {shown.length === 0 && <Text style={styles.empty}>{t('board.empty')}</Text>}
-          {shown.map(card)}
-        </ScrollView>
       ) : (
         <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip} contentContainerStyle={styles.tabs}>
@@ -279,7 +216,7 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
                   accessibilityRole="tab"
                   accessibilityState={{ selected }}
                   onPress={() => setColumn(c.key)}
-                  style={[styles.tab, selected && { borderBottomColor: c.color }]}>
+                  style={[styles.tab, selected && { borderBottomColor: colors.primary }]}>
                   <Text style={[styles.tabText, selected && styles.tabTextSelected]}>
                     {label(c.key)} {columnTasks(c.key).length}
                   </Text>
@@ -300,7 +237,6 @@ export function TaskBoard({ kind }: { kind: TaskKind }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  actions: { paddingHorizontal: 12, paddingTop: 10 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   filters: { gap: 6, paddingTop: 10 },
   // Горизонтальная полоса не должна растягиваться по высоте.
@@ -308,21 +244,21 @@ const styles = StyleSheet.create({
   chips: { gap: 6, paddingHorizontal: 12 },
   chip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: 'transparent',
   },
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipDanger: { backgroundColor: '#DC2626', borderColor: '#DC2626' },
+  chipDanger: { backgroundColor: colors.danger, borderColor: colors.danger },
   chipText: { fontSize: 14, color: colors.text },
   chipTextSelected: { color: colors.primaryText, fontWeight: '600' },
   columns: { gap: 12, padding: 12, flexGrow: 1 },
-  column: { width: 280, backgroundColor: '#ECEEF4', borderRadius: 14, padding: 8, gap: 8 },
+  column: { width: 280, borderWidth: 1, borderColor: colors.border, borderRadius: 22, padding: 8, gap: 8 },
   columnHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4, paddingTop: 2 },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  columnTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text },
+  columnTitle: { flex: 1, fontSize: 15, fontWeight: '700', fontFamily: fonts.bold, color: colors.text },
   count: { fontSize: 14, color: colors.muted, fontWeight: '600' },
   tabs: { paddingHorizontal: 8, marginTop: 6 },
   tab: { paddingHorizontal: 10, paddingVertical: 10, borderBottomWidth: 3, borderBottomColor: 'transparent' },
@@ -332,15 +268,16 @@ const styles = StyleSheet.create({
   empty: { color: colors.muted, textAlign: 'center', paddingVertical: 16 },
   card: {
     gap: 4,
-    padding: 12,
-    borderRadius: 12,
+    padding: 14,
+    borderRadius: 18,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.surface,
+    ...outlined,
   },
-  cardOverdue: { borderColor: '#FCA5A5' },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
+  cardOverdue: { borderColor: colors.dangerBorder },
+  cardTitle: { fontSize: 16, fontWeight: '600', fontFamily: fonts.semibold, color: colors.text },
   cardBusiness: { fontSize: 13, color: colors.muted },
   cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  noAssignee: { fontSize: 12, color: '#B45309' },
+  noAssignee: { fontSize: 12, color: colors.warning },
 });

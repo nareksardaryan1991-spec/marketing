@@ -2,6 +2,14 @@ type Lang = 'ru' | 'hy' | 'en';
 type Vars = Record<string, string>;
 type Template = (v: Vars) => string;
 
+// Этапы задачи команды (как на доске в приложении).
+const STAGES: Record<Lang, Record<string, string>> = {
+  ru: { new: 'Бэклог', assigned: 'К выполнению', in_progress: 'В работе', internal_review: 'На проверке', approved: 'Готово' },
+  hy: { new: 'Բեքլոգ', assigned: 'Կատարման', in_progress: 'Աշխատանքում', internal_review: 'Ստուգման մեջ', approved: 'Պատրաստ' },
+  en: { new: 'Backlog', assigned: 'To do', in_progress: 'In progress', internal_review: 'In review', approved: 'Done' },
+};
+const stage = (lang: Lang, status: string) => STAGES[lang][status] ?? status;
+
 const T: Record<string, Record<Lang, Template>> = {
   task_assigned: {
     ru: (v) => `Новая задача: ${v.task}`,
@@ -22,6 +30,17 @@ const T: Record<string, Record<Lang, Template>> = {
     ru: (v) => `✅ Работу приняли: ${v.task}`,
     hy: (v) => `✅ Աշխատանքն ընդունվեց՝ ${v.task}`,
     en: (v) => `✅ Work accepted: ${v.task}`,
+  },
+  // Задача команды: сменился этап (кто сменил — в скобках).
+  task_status: {
+    ru: (v) => `🔄 ${v.task}: ${stage('ru', v.from)} → ${stage('ru', v.status)}${v.actor ? ` (${v.actor})` : ''}`,
+    hy: (v) => `🔄 ${v.task}՝ ${stage('hy', v.from)} → ${stage('hy', v.status)}${v.actor ? ` (${v.actor})` : ''}`,
+    en: (v) => `🔄 ${v.task}: ${stage('en', v.from)} → ${stage('en', v.status)}${v.actor ? ` (${v.actor})` : ''}`,
+  },
+  task_comment: {
+    ru: (v) => `💬 ${v.author} — ${v.task}:\n${v.preview}`,
+    hy: (v) => `💬 ${v.author} — ${v.task}՝\n${v.preview}`,
+    en: (v) => `💬 ${v.author} — ${v.task}:\n${v.preview}`,
   },
   client_review: {
     ru: (v) => `Готово к согласованию: ${v.service} #${v.number}. Откройте приложение, чтобы одобрить или попросить правки.`,

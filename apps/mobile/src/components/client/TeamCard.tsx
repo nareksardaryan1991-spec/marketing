@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: '600', color: colors.text },
   role: { fontWeight: '400', color: colors.muted },
   status: { fontSize: 14, color: colors.text },
-  waiting: { color: '#B45309', fontWeight: '600' },
+  waiting: { color: colors.warning, fontWeight: '600' },
   idle: { color: colors.muted },
   chevron: { fontSize: 24, color: colors.muted },
 });

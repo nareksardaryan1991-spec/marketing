@@ -14,11 +14,11 @@ import { formatDate } from '@/lib/format';
 import { copyDraftFiles, loadAgentDraft, type AgentDraft } from '@/lib/handoff';
 import { roleLabel } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
-import type { OrderStatus, Profile, Task, TaskPriority } from '@/lib/types';
+import { parseTags, PRIORITIES } from '@/lib/teamTasks';
+import type { OrderStatus, Profile, Task, TaskPriority, TeamProject } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
 
 const NONE = '';
-const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'urgent'];
 
 type OrderRow = { id: string; created_at: string; status: OrderStatus };
 
@@ -44,6 +44,9 @@ export default function TeamTaskEditScreen() {
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [business, setBusiness] = useState(NONE);
   const [order, setOrder] = useState(NONE);
+  const [project, setProject] = useState(NONE);
+  const [tags, setTags] = useState('');
+  const [projects, setProjects] = useState<TeamProject[]>([]);
   const [people, setPeople] = useState<Profile[]>([]);
   const [businesses, setBusinesses] = useState<{ id: string; name: string }[]>([]);
   // Заказы запоминаем вместе с клиентом: при смене клиента старый список не показываем.
@@ -66,6 +69,11 @@ export default function TeamTaskEditScreen() {
       .select('id, name')
       .order('name')
       .then(({ data }) => setBusinesses(data ?? []));
+    supabase
+      .from('team_projects')
+      .select('*')
+      .order('name')
+      .then(({ data }) => setProjects((data as TeamProject[] | null) ?? []));
   }, []);
 
   useEffect(() => {
@@ -93,6 +101,8 @@ export default function TeamTaskEditScreen() {
         setPriority(data.priority);
         setBusiness(data.business_id ?? NONE);
         setOrder(data.related_order_id ?? NONE);
+        setProject(data.project_id ?? NONE);
+        setTags((data.tags ?? []).join(', '));
       });
     supabase
       .from('task_watchers')
@@ -166,6 +176,8 @@ export default function TeamTaskEditScreen() {
       // «Автор» — у существующей задачи передаём автора явно (вернуть проверку автору).
       p_reviewer_id: reviewer || (editing ? authorId : null),
       p_watchers: watchers.filter((id) => !always.has(id)),
+      p_project_id: project || null,
+      p_tags: parseTags(tags),
     };
     const result = editing
       ? await supabase.rpc('update_team_task', { p_task_id: params.id, ...fields })
@@ -280,6 +292,31 @@ export default function TeamTaskEditScreen() {
           value={priority}
           onChange={setPriority}
           options={PRIORITIES.map((p) => ({ value: p, label: t(`teamTasks.priority.${p}`) }))}
+        />
+      </Card>
+
+      <Card>
+        <Text style={styles.cardTitle}>{t('teamTasks.projectAndTags')}</Text>
+        {/* Проекты заводит владелец («Проекты» в разделе); пока их нет — только теги. */}
+        {projects.length > 0 && (
+        <Choice
+          value={project}
+          onChange={setProject}
+          options={[
+            { value: NONE, label: t('teamTasks.noProject') },
+            // Архивный проект в списке — только если он уже стоит в задаче.
+            ...projects
+              .filter((p) => !p.archived || p.id === project)
+              .map((p) => ({ value: p.id, label: p.name, hint: p.archived ? t('teamTasks.projects.archived') : undefined })),
+          ]}
+        />
+        )}
+        <Field
+          label={t('teamTasks.tags')}
+          hint={t('teamTasks.tagsHint')}
+          value={tags}
+          autoCapitalize="none"
+          onChangeText={setTags}
         />
       </Card>
 

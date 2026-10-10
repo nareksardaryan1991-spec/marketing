@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '../theme';
+import { colors, fonts } from '../theme';
 import { chart } from './chartTokens';
 
 // Плитка показателя: подпись, значение, изменение (знак + стрелка, не только цвет).
@@ -44,6 +44,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   label: { fontSize: 13, color: colors.muted },
-  value: { fontSize: 26, fontWeight: '600', color: colors.text },
+  value: { fontSize: 24, fontFamily: fonts.display, color: colors.text },
   delta: { fontSize: 13, color: colors.muted },
 });

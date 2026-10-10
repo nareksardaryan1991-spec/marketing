@@ -1102,8 +1102,8 @@ check('employee sees only own team tasks',
 check('employee does not see an unassigned team task', (await as(EMPLOYEE, 'select id from tasks where id = $1', [spareTask])).rows.length === 0);
 check('freelancer does not see team tasks of others', (await as(FREELANCER, `select id from tasks where kind = 'team'`)).rows.length === 0);
 check('staff team does not see team tasks of others', (await as(DESIGNER, `select id from tasks where kind = 'team'`)).rows.length === 0);
-check('manager sees own team tasks, not the owner task; the owner sees all',
-  (await as(MANAGER, `select id from tasks where kind = 'team' order by id`)).rows.map(r => r.id).join() === [freeTask, linkedTask].sort().join() &&
+check('every manager and the owner see all team tasks, the owner task too',
+  (await as(MANAGER, `select id from tasks where kind = 'team'`)).rows.length === 3 &&
   (await as(ADMIN, `select id from tasks where kind = 'team'`)).rows.length === 3);
 check('reviewer defaults to the author', ft.reviewer_id === MANAGER);
 
@@ -1145,7 +1145,7 @@ await fails('accepted team task cannot be published', () => as(MANAGER, 'select 
 
 await fails('employee cannot edit team tasks', () => as(EMPLOYEE, 'select update_team_task($1, $2, null, $3, null, $4)', [freeTask, 'Y', EMPLOYEE, 'normal']));
 await fails('update_team_task does not touch order work', () => as(MANAGER, 'select update_team_task($1, $2, null, $3, null, $4)', [task2, 'Y', EMPLOYEE, 'normal']));
-await fails('manager cannot edit the owner task (does not even see it)', () => as(MANAGER, 'select update_team_task($1, $2, null, $3, null, $4)', [spareTask, 'Y', EMPLOYEE, 'normal']));
+await fails('manager sees the owner task but cannot edit it', () => as(MANAGER, 'select update_team_task($1, $2, null, $3, null, $4)', [spareTask, 'Y', EMPLOYEE, 'normal']));
 await as(ADMIN, 'select update_team_task($1, $2, $3, $4, $5, $6, $7)', [spareTask, 'Разобрать архив фото', 'По папкам', EMPLOYEE, '2026-10-25', 'normal', bizId]);
 const st = (await as(EMPLOYEE, 'select * from tasks where id = $1', [spareTask])).rows[0];
 check('owner edits the team task: assigned now, linked to a client', st?.status === 'assigned' && st.title === 'Разобрать архив фото' && st.business_id === bizId);
@@ -1157,10 +1157,13 @@ check('owner deletes a team task', (await as(ADMIN, 'select id from tasks where 
 await fails('order work still needs order fields', () => as(null, `insert into tasks (kind, title) values ('order', 'x')`));
 await fails('team task cannot sit on an order', () => as(null, `insert into tasks (kind, title, order_id) values ('team', 'x', $1)`, [orderId]));
 
-// Кто видит задачу команды: автор, исполнитель, проверяющий, отмеченные и владелец. Чужой менеджер — нет.
+// Кто видит задачу команды: автор, исполнитель, проверяющий, отмеченные, владелец и все менеджеры.
+// Посторонний сотрудник (STRANGER, SMM) — нет.
 const MANAGER2 = 'abababab-abab-abab-abab-abababababab';
-await db.exec(`insert into auth.users values ('${MANAGER2}', 'm2@x', '{"full_name":"Mila"}')`);
+const STRANGER = 'efefefef-efef-efef-efef-efefefefefef';
+await db.exec(`insert into auth.users values ('${MANAGER2}', 'm2@x', '{"full_name":"Mila"}'), ('${STRANGER}', 's@x', '{"full_name":"Sona"}')`);
 await as(ADMIN, `select set_user_role($1, 'manager')`, [MANAGER2]);
+await as(ADMIN, `select set_user_role($1, 'smm')`, [STRANGER]);
 const fullArgs = `select create_team_task($1, $2, $3, null, 'normal', null, $4, null, $5, $6) as id`;
 const privTask = (await as(MANAGER2, fullArgs, ['Тайная задача', 'Только для своих', EMPLOYEE, orderId, DESIGNER, [FREELANCER, ADMIN, FREELANCER]])).rows[0].id;
 await as(EMPLOYEE, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [privTask + '/secret.jpg']);
@@ -1177,15 +1180,16 @@ const seenTeam = async (user) => ({
   view: (await as(user, 'select can_view_task($1) v', [privTask])).rows[0].v,
   orderNotes: (await as(user, 'select task_order_notes($1) n', [privTask])).rows[0].n,
 });
-const stranger = await seenTeam(MANAGER);
-check('another manager cannot open the task by a direct link, nor its versions, comments or files: ' + JSON.stringify(stranger),
+const stranger = await seenTeam(STRANGER);
+check('an unmarked staff member cannot open the task by a direct link, nor its versions, comments or files: ' + JSON.stringify(stranger),
   stranger.task + stranger.versions + stranger.notes + stranger.comments + stranger.watchers + stranger.files === 0 &&
   stranger.view === false && stranger.orderNotes === null);
 const clientSeen = await seenTeam(CLIENT);
 check('client cannot open the team task either', clientSeen.task + clientSeen.versions + clientSeen.files === 0 && clientSeen.view === false);
-await fails('another manager cannot comment on a hidden task', () => as(MANAGER, `insert into task_comments (task_id, author_id, body) values ($1, $2, 'x')`, [privTask, MANAGER]));
-await fails('another manager cannot upload into a hidden task', () => as(MANAGER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [privTask + '/x.jpg']));
-for (const [name, id] of [['author', MANAGER2], ['assignee', EMPLOYEE], ['reviewer', DESIGNER], ['watcher', FREELANCER], ['owner', ADMIN]]) {
+await fails('an unmarked staff member cannot comment on a hidden task', () => as(STRANGER, `insert into task_comments (task_id, author_id, body) values ($1, $2, 'x')`, [privTask, STRANGER]));
+await fails('an unmarked staff member cannot upload into a hidden task', () => as(STRANGER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [privTask + '/x.jpg']));
+await fails('another manager sees the task but cannot upload into it', () => as(MANAGER, `insert into storage.objects (bucket_id, name) values ('deliverables', $1)`, [privTask + '/x.jpg']));
+for (const [name, id] of [['author', MANAGER2], ['assignee', EMPLOYEE], ['reviewer', DESIGNER], ['watcher', FREELANCER], ['owner', ADMIN], ['another manager', MANAGER]]) {
   const r = await seenTeam(id);
   check(`${name} sees the task with its versions, comments and files`,
     r.task === 1 && r.versions === 1 && r.notes === 1 && r.comments === 1 && r.files === 1 && r.view === true);
@@ -1198,9 +1202,9 @@ await as(MANAGER2, 'select update_team_task($1, $2, $3, $4, null, $5)', [privTas
 check('editing without reviewer and watchers keeps them',
   (await as(ADMIN, 'select reviewer_id from tasks where id = $1', [privTask])).rows[0].reviewer_id === DESIGNER &&
   (await as(ADMIN, 'select count(*)::int n from task_watchers where task_id = $1', [privTask])).rows[0].n === 1);
-await as(MANAGER2, 'select update_team_task($1, $2, $3, $4, null, $5, null, null, $6, $7)', [privTask, 'Тайная задача', null, EMPLOYEE, 'normal', MANAGER2, [MANAGER]]);
-check('watchers replaced: the marked manager now sees the task, the unmarked freelancer does not',
-  (await as(MANAGER, 'select id from tasks where id = $1', [privTask])).rows.length === 1 &&
+await as(MANAGER2, 'select update_team_task($1, $2, $3, $4, null, $5, null, null, $6, $7)', [privTask, 'Тайная задача', null, EMPLOYEE, 'normal', MANAGER2, [STRANGER]]);
+check('watchers replaced: the marked staff member now sees the task, the unmarked freelancer does not',
+  (await as(STRANGER, 'select id from tasks where id = $1', [privTask])).rows.length === 1 &&
   (await as(FREELANCER, 'select id from tasks where id = $1', [privTask])).rows.length === 0);
 await fails('watchers must be team members', () => as(MANAGER2, fullArgs, ['X', null, EMPLOYEE, null, null, [CLIENT]]));
 await fails('watchers are set only through task functions', () => as(MANAGER2, 'select set_task_watchers($1, $2)', [privTask, [DESIGNER]]));
@@ -1276,7 +1280,7 @@ await as(MANAGER2, 'select update_team_task($1, $2, $3, $4, $5, $6, null, null, 
 rt = await rRow();
 check('the author changes text, due date, importance, reviewer and «who sees»',
   rt.title === 'Снять витрину ещё раз' && rt.brief === 'Днём' && rt.priority === 'urgent' && rt.reviewer_id === MANAGER2 &&
-  (await as(MANAGER, 'select id from tasks where id = $1', [rTask])).rows.length === 0);
+  (await as(ADMIN, 'select count(*)::int n from task_watchers where task_id = $1', [rTask])).rows[0].n === 0);
 await as(MANAGER2, 'select set_team_task_attachments($1, $2)', [rTask, [rTask + '/brief/plan.pdf']]);
 await as(ADMIN, 'select update_team_task($1, $2, $3, $4, $5, $6)', [rTask, 'Витрина (владелец)', 'Днём', EMPLOYEE, '2026-11-05', 'urgent']);
 check('the owner edits any task', (await rRow()).title === 'Витрина (владелец)');
@@ -1312,8 +1316,8 @@ check('status changes are recorded with who did them: ' + statuses.join(' '),
 check('the assignee, the reviewer and the watcher see the history',
   (await history(EMPLOYEE)).length === hh.length + 4 && (await history(DESIGNER)).length === hh.length + 4 &&
   (await history(FREELANCER)).length === hh.length + 4);
-check('a manager who does not see the task and the client see no history',
-  (await history(MANAGER)).length === 0 && (await history(CLIENT)).length === 0);
+check('any manager sees the history; an unmarked staff member and the client do not',
+  (await history(MANAGER)).length === hh.length + 4 && (await history(STRANGER)).length === 0 && (await history(CLIENT)).length === 0);
 await fails('nobody writes history by hand', () => as(MANAGER2, `insert into task_history (task_id, field) values ($1, 'title')`, [hTask]));
 await as(MANAGER2, `update task_history set field = 'x' where task_id = $1`, [hTask]);
 await as(MANAGER2, `delete from task_history where task_id = $1`, [hTask]);
@@ -1357,7 +1361,7 @@ nn = await notesFor(ntask);
 check('employee is notified when the work is accepted, the client is not notified at all',
   nn.some(n => n.kind === 'task_done' && n.user_id === EMPLOYEE) && !nn.some(n => n.user_id === CLIENT));
 
-// Уведомления только тем, кто видит задачу; остальным менеджерам — только число.
+// Уведомления только тем, кто видит задачу (менеджеры видят все задачи команды).
 const yesterday = (await as(null, `select (yerevan_today() - 1)::text as d`)).rows[0].d;
 const secret = (await as(MANAGER2, `select create_team_task($1, null, $2, $3, 'normal', null, null, null, $4, '{}') as id`,
   ['Секретная съёмка', EMPLOYEE, yesterday, DESIGNER])).rows[0].id;
@@ -1367,20 +1371,19 @@ await as(null, 'delete from notifications');
 await as(null, `update tasks set due_reminded_on = null where id = any($1)`, [[secret, known]]);
 await as(null, 'select process_due_reminders()');
 const overdueTo = async (taskId) => (await notesFor(taskId)).filter(n => n.kind === 'task_overdue').map(n => n.user_id).sort().join();
-check('an overdue team task: assignee, author, reviewer and owner are told, not other managers',
-  await overdueTo(secret) === [EMPLOYEE, MANAGER2, DESIGNER, ADMIN].sort().join());
+check('an overdue team task: assignee, author, reviewer, owner and all managers are told, not a staff member aside',
+  await overdueTo(secret) === [EMPLOYEE, MANAGER2, DESIGNER, ADMIN, MANAGER].sort().join());
 check('a marked manager is told about the task they see',
   (await overdueTo(known)).split(',').includes(MANAGER));
 const hiddenNotes = (await as(null, `select user_id, payload from notifications where kind = 'team_overdue_hidden'`)).rows;
-check('a manager who does not see some overdue tasks gets only their number, no titles: ' + JSON.stringify(hiddenNotes.map(n => n.payload)),
-  hiddenNotes.some(n => n.user_id === MANAGER && n.payload.count >= 1 && !JSON.stringify(n.payload).includes('Секрет')) &&
-  !hiddenNotes.some(n => n.user_id === ADMIN || n.user_id === MANAGER2 && n.payload.count < 1));
+check('managers see every task, so nobody gets a count of hidden overdue tasks: ' + JSON.stringify(hiddenNotes.map(n => n.payload)),
+  hiddenNotes.length === 0);
 check('no notification anywhere carries the hidden title to someone who cannot see it',
   !(await as(null, `select user_id from notifications where payload::text like '%Секретная%'`)).rows
-    .some(n => ![EMPLOYEE, MANAGER2, DESIGNER, ADMIN].includes(n.user_id)));
-await as(null, `select notify_users(array[$1, $2]::uuid[], 'task_assigned', task_payload(t)) from tasks t where id = $3`, [MANAGER, FREELANCER, secret]);
+    .some(n => ![EMPLOYEE, MANAGER2, DESIGNER, ADMIN, MANAGER].includes(n.user_id)));
+await as(null, `select notify_users(array[$1, $2]::uuid[], 'task_assigned', task_payload(t)) from tasks t where id = $3`, [STRANGER, FREELANCER, secret]);
 check('safety net: a team-task notification to someone who does not see the task is not written',
-  (await notesFor(secret)).filter(n => n.kind === 'task_assigned' && [MANAGER, FREELANCER].includes(n.user_id)).length === 0);
+  (await notesFor(secret)).filter(n => n.kind === 'task_assigned' && [STRANGER, FREELANCER].includes(n.user_id)).length === 0);
 await as(EMPLOYEE, 'select start_task($1)', [secret]);
 await as(EMPLOYEE, `select submit_deliverable($1, 'Сняла')`, [secret]);
 check('submission goes to the reviewer only',
@@ -1552,5 +1555,147 @@ check('owner sees the pending test payment of a client order',
   (await as(ADMIN, `select id from payments where order_id = $1 and provider = 'test' and status = 'created'`, [testOrder])).rows.length === 1);
 await fails('client cannot confirm a test payment by itself', () => as(CLIENT, `select mark_payment_succeeded($1, 'x', '{}')`, [testPay]));
 await fails('manager cannot confirm a test payment directly either', () => as(MANAGER, `select mark_payment_succeeded($1, 'x', '{}')`, [testPay]));
+
+// Трекер задач команды: проекты (заводит только владелец), теги, статус с доски, история.
+await fails('manager cannot add a project', () => as(MANAGER, `insert into team_projects (name) values ('Кофейни')`));
+await fails('employee cannot add a project', () => as(EMPLOYEE, `insert into team_projects (name) values ('Кофейни')`));
+const projA = (await as(ADMIN, `insert into team_projects (name) values (' Cafe Aroma ') returning id, created_by`)).rows[0];
+const projB = (await as(ADMIN, `insert into team_projects (name) values ('Бренд агентства') returning id`)).rows[0].id;
+check('owner adds projects, the author is recorded', projA.created_by === ADMIN);
+await fails('project names do not repeat', () => as(ADMIN, `insert into team_projects (name) values ('cafe aroma')`));
+await fails('project needs a name', () => as(ADMIN, `insert into team_projects (name) values ('  ')`));
+check('staff read projects, the client does not',
+  (await as(EMPLOYEE, 'select id from team_projects')).rows.length === 2 &&
+  (await as(MANAGER, 'select id from team_projects')).rows.length === 2 &&
+  (await as(CLIENT, 'select id from team_projects')).rows.length === 0);
+await as(MANAGER, `update team_projects set name = 'Взлом' where id = $1`, [projB]);
+await as(MANAGER, 'delete from team_projects where id = $1', [projB]);
+check('a manager cannot rename or delete a project', (await as(ADMIN, 'select name from team_projects where id = $1', [projB])).rows[0]?.name === 'Бренд агентства');
+
+const trackArgs = `select create_team_task($1, null, $2, null, 'normal', null, null, null, null, '{}', $3, $4) as id`;
+const trk = (await as(MANAGER2, trackArgs, ['Сторис к открытию', EMPLOYEE, projA.id, [' #Stories', 'stories', 'Осень ', '', 'осень']])).rows[0].id;
+const trkRow = async () => (await as(ADMIN, 'select * from tasks where id = $1', [trk])).rows[0];
+let tr = await trkRow();
+check('task gets a project and clean tags: no «#», lowercase, no repeats or empties: ' + JSON.stringify(tr.tags),
+  tr.project_id === projA.id && JSON.stringify(tr.tags) === JSON.stringify(['stories', 'осень']));
+await fails('unknown project', () => as(MANAGER2, trackArgs, ['X', EMPLOYEE, OTHER, []]));
+await fails('no more than 10 tags', () => as(MANAGER2, trackArgs, ['X', EMPLOYEE, null, Array.from({ length: 11 }, (_, i) => 't' + i)]));
+await fails('a tag is short', () => as(MANAGER2, trackArgs, ['X', EMPLOYEE, null, ['x'.repeat(31)]]));
+await fails('order work has no project or tags', () => as(null, `update tasks set tags = '{a}' where id = $1`, [task2]));
+
+// Старое приложение не передаёт теги — проект и теги остаются; новое передаёт — проект ставится как передан.
+await as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4)', [trk, 'Сторис к открытию', EMPLOYEE, 'normal']);
+tr = await trkRow();
+check('editing without tags keeps project and tags', tr.project_id === projA.id && tr.tags.length === 2);
+await as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4, null, null, null, null, $5, $6)', [trk, 'Сторис к открытию', EMPLOYEE, 'normal', projB, ['видео']]);
+tr = await trkRow();
+check('editing with tags sets the project and tags', tr.project_id === projB && JSON.stringify(tr.tags) === '["видео"]');
+await as(ADMIN, 'update team_projects set archived = true where id = $1', [projB]);
+await as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4, null, null, null, null, $5, $6)', [trk, 'Сторис к открытию', EMPLOYEE, 'high', projB, ['видео']]);
+check('an archived project stays on the task it is already on', (await trkRow()).project_id === projB);
+await fails('an archived project cannot be chosen for a new task', () => as(MANAGER2, trackArgs, ['X', EMPLOYEE, projB, []]));
+await fails('only the author or the owner sets project and tags', () => as(MANAGER, 'select update_team_task($1, $2, null, $3, null, $4, null, null, null, null, $5, $6)', [trk, 'Сторис к открытию', EMPLOYEE, 'normal', null, []]));
+await as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4, null, null, null, null, null, $5)', [trk, 'Сторис к открытию', EMPLOYEE, 'normal', []]);
+tr = await trkRow();
+check('passing tags with no project clears the project', tr.project_id === null && tr.tags.length === 0);
+
+// Статус с доски.
+const setStatus = 'select set_team_task_status($1, $2)';
+await as(MANAGER2, setStatus, [trk, 'new']);
+check('the author moves a task with an assignee back to the backlog', (await trkRow()).status === 'new');
+await as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4)', [trk, 'Сторис к открытию!', EMPLOYEE, 'normal']);
+check('editing does not pull it out of the backlog while the assignee stays', (await trkRow()).status === 'new');
+await fails('the assignee cannot take a task from the backlog', () => as(EMPLOYEE, setStatus, [trk, 'in_progress']));
+await as(MANAGER2, setStatus, [trk, 'assigned']);
+await fails('a manager who is not the author cannot move the task', () => as(MANAGER, setStatus, [trk, 'in_progress']));
+await fails('a staff member aside cannot move the task (does not see it)', () => as(STRANGER, setStatus, [trk, 'in_progress']));
+await fails('the client cannot move the task', () => as(CLIENT, setStatus, [trk, 'in_progress']));
+await as(EMPLOYEE, setStatus, [trk, 'in_progress']);
+check('the assignee starts the work from the board', (await trkRow()).status === 'in_progress');
+await as(EMPLOYEE, setStatus, [trk, 'assigned']);
+check('the assignee may put it back to «to do»', (await trkRow()).status === 'assigned');
+await fails('the assignee cannot move it to the backlog', () => as(EMPLOYEE, setStatus, [trk, 'new']));
+await fails('nobody drags a task into review — only a submitted result does', () => as(EMPLOYEE, setStatus, [trk, 'internal_review']));
+await fails('nobody drags a task to done — only the reviewer accepts', () => as(MANAGER2, setStatus, [trk, 'approved']));
+await fails('the owner cannot drag to done either', () => as(ADMIN, setStatus, [trk, 'approved']));
+await fails('order work is not moved by this function', () => as(MANAGER, setStatus, [task2, 'in_progress']));
+await as(EMPLOYEE, `select submit_deliverable($1, 'Готово')`, [trk]);
+await fails('a task in review is not dragged away by the author', () => as(MANAGER2, setStatus, [trk, 'in_progress']));
+await as(MANAGER2, 'select review_task($1, true)', [trk]);
+await fails('the assignee cannot reopen a done task', () => as(EMPLOYEE, setStatus, [trk, 'in_progress']));
+await as(MANAGER2, setStatus, [trk, 'in_progress']);
+check('the author reopens a done task', (await trkRow()).status === 'in_progress');
+const unassigned = (await as(MANAGER2, trackArgs, ['Без исполнителя', null, null, []])).rows[0].id;
+await fails('a task without an assignee stays in the backlog', () => as(MANAGER2, setStatus, [unassigned, 'assigned']));
+
+const trkHist = (await as(ADMIN, `select field, old_value, new_value from task_history where task_id = $1 and field in ('project', 'tags') order by created_at`, [trk])).rows;
+check('history records project by name and tags: ' + trkHist.map(h => `${h.field}:${JSON.stringify(h.old_value)}>${JSON.stringify(h.new_value)}`).join(' '),
+  trkHist.some(h => h.field === 'project' && h.old_value === 'Cafe Aroma' && h.new_value === 'Бренд агентства') &&
+  trkHist.some(h => h.field === 'tags' && JSON.stringify(h.new_value) === '["видео"]') &&
+  trkHist.some(h => h.field === 'project' && h.old_value === 'Бренд агентства' && h.new_value === null));
+const trk2 = (await as(MANAGER2, trackArgs, ['Пост к открытию', EMPLOYEE, projA.id, []])).rows[0].id;
+await as(ADMIN, 'delete from team_projects where id = $1', [projA.id]);
+const delHist = (await as(ADMIN, `select actor_id, old_value, new_value from task_history where task_id = $1 and field = 'project'`, [trk2])).rows;
+check('deleting a project frees its tasks and leaves one history line with its name: ' + JSON.stringify(delHist),
+  (await as(ADMIN, 'select project_id from tasks where id = $1', [trk2])).rows[0].project_id === null &&
+  delHist.length === 1 && delHist[0].old_value === 'Cafe Aroma' && delHist[0].new_value === null && delHist[0].actor_id === ADMIN);
+
+// Уведомления по задачам команды внутри сайта: смена статуса, комментарии, «прочитано».
+const inbox = (await as(MANAGER2, `select create_team_task($1, null, $2, null, 'normal', null, null, null, $3, $4) as id`,
+  ['Снять бариста', EMPLOYEE, DESIGNER, [STRANGER]])).rows[0].id;
+await as(null, 'delete from notifications');
+const inboxNotes = async (kind) => (await as(null,
+  `select user_id, payload from notifications where payload ->> 'task_id' = $1 and kind = $2 order by created_at`, [inbox, kind])).rows;
+const usersOf = (rows) => rows.map((n) => n.user_id).sort().join();
+const idList = (...ids) => ids.sort().join();
+await as(EMPLOYEE, 'select start_task($1)', [inbox]);
+let stNotes = await inboxNotes('task_status');
+check('status change: the author and the reviewer are told, not the one who changed it, with the new status and who',
+  usersOf(stNotes) === idList(MANAGER2, DESIGNER) && stNotes[0].payload.status === 'in_progress' && stNotes[0].payload.from === 'assigned' &&
+  !!stNotes[0].payload.actor && stNotes[0].payload.title === 'Снять бариста');
+await as(EMPLOYEE, `insert into task_comments (task_id, author_id, body) values ($1, $2, '  Начинаю съёмку в 10:00  ')`, [inbox, EMPLOYEE]);
+let cmNotes = await inboxNotes('task_comment');
+check('a comment goes to the author, the reviewer and the watcher, not to the one who wrote it',
+  usersOf(cmNotes) === idList(MANAGER2, DESIGNER, STRANGER) && cmNotes[0].payload.preview === 'Начинаю съёмку в 10:00' && !!cmNotes[0].payload.author);
+await as(null, 'delete from notifications');
+await as(EMPLOYEE, `select submit_deliverable($1, 'Готово')`, [inbox]);
+check('submitted: the reviewer gets «ready for review» only, the author gets the status change',
+  usersOf(await inboxNotes('task_review')) === DESIGNER && usersOf(await inboxNotes('task_status')) === MANAGER2);
+await as(null, 'delete from notifications');
+await as(DESIGNER, 'select review_task($1, false, $2)', [inbox, 'Нужен крупный план']);
+check('returned: the assignee gets the return with the comment, the author the status change, no separate comment note',
+  usersOf(await inboxNotes('task_returned')) === EMPLOYEE && usersOf(await inboxNotes('task_status')) === MANAGER2 &&
+  (await inboxNotes('task_comment')).length === 0);
+await as(null, 'delete from notifications');
+await as(EMPLOYEE, `select submit_deliverable($1, 'Добавил крупный план')`, [inbox]);
+await as(DESIGNER, 'select review_task($1, true, $2)', [inbox, 'Отлично']);
+check('accepted with a comment: «work accepted» to the assignee, the comment to the others as a comment',
+  usersOf(await inboxNotes('task_done')) === EMPLOYEE && usersOf(await inboxNotes('task_comment')) === idList(EMPLOYEE, MANAGER2, STRANGER));
+await as(null, 'delete from notifications');
+await as(MANAGER2, 'select set_team_task_status($1, $2)', [inbox, 'in_progress']);
+check('the author reopens: the assignee and the reviewer are told', usersOf(await inboxNotes('task_status')) === idList(EMPLOYEE, DESIGNER));
+await as(null, 'delete from notifications');
+await as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4)', [inbox, 'Снять бариста', null, 'normal']);
+await as(MANAGER2, 'select update_team_task($1, $2, null, $3, null, $4)', [inbox, 'Снять бариста', FREELANCER, 'normal']);
+check('assigning someone is «new task» for them, not a status change for everyone',
+  (await inboxNotes('task_status')).length === 0 && usersOf(await inboxNotes('task_assigned')) === FREELANCER);
+await as(DESIGNER, `insert into task_comments (task_id, author_id, body) values ($1, $2, 'Комментарий к заказу')`, [task2, DESIGNER]);
+check('comments on order work do not create team notifications',
+  (await as(null, `select count(*)::int n from notifications where kind = 'task_comment' and payload ->> 'task_id' = $1`, [task2])).rows[0].n === 0);
+
+// «Прочитано»: каждый отмечает только свои.
+await as(FREELANCER, `insert into task_comments (task_id, author_id, body) values ($1, $2, 'Ещё вопрос')`, [inbox, FREELANCER]);
+const unread = async (user) => (await as(user, 'select count(*)::int n from notifications where read_at is null')).rows[0].n;
+const m2Before = await unread(MANAGER2);
+const strangerNotes = (await as(STRANGER, 'select id from notifications where read_at is null')).rows.map((r) => r.id);
+check('people read only their own notifications', strangerNotes.length > 0 && m2Before > 0);
+await as(STRANGER, 'select mark_notifications_read($1)', [[strangerNotes[0]]]);
+check('marking one as read', (await unread(STRANGER)) === strangerNotes.length - 1);
+await as(STRANGER, 'select mark_notifications_read()');
+check('marking all as read touches only my own', (await unread(STRANGER)) === 0 && (await unread(MANAGER2)) === m2Before);
+await as(STRANGER, `update notifications set read_at = now(), payload = '{}' where user_id = $1`, [MANAGER2]);
+check('nobody changes notifications directly', (await unread(MANAGER2)) === m2Before);
+check('anonymous cannot mark notifications',
+  (await as(null, `select has_function_privilege('anon', 'mark_notifications_read(uuid[])', 'execute') as v`)).rows[0].v === false);
 
 console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'ALL CHECKS PASSED');

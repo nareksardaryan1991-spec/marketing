@@ -158,6 +158,6 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: '500', color: colors.text },
   muted: { fontSize: 14, color: colors.muted },
   role: { fontSize: 14, color: colors.primary, fontWeight: '600' },
-  rolePending: { color: '#92400E' },
+  rolePending: { color: colors.warning },
   jobTitle: { gap: 8 },
 });

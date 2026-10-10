@@ -1,4 +1,5 @@
 import type { TaskStatus } from './types';
+import { tints } from '@/components/theme';
 
 // Работа ещё за командой (как is_open_task_status в базе): у клиента и после одобрения
 // срок уже не горит.
@@ -22,7 +23,7 @@ export function dueTone(due: string | null, status: TaskStatus): DueTone | null 
 }
 
 export const DUE_COLORS: Record<DueTone, { bg: string; fg: string }> = {
-  overdue: { bg: '#FEE2E2', fg: '#B91C1C' },
-  today: { bg: '#FFEDD5', fg: '#C2410C' },
-  tomorrow: { bg: '#FEF3C7', fg: '#92400E' },
+  overdue: tints.red,
+  today: tints.orange,
+  tomorrow: tints.amber,
 };

@@ -97,7 +97,7 @@ export function Attachments({
 
 const styles = StyleSheet.create({
   list: { gap: 6 },
-  photo: { borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.08)' },
+  photo: { borderRadius: 12, backgroundColor: chatColors.photo },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, width: PHOTO_WIDTH },
   gridPhoto: { width: (PHOTO_WIDTH - 4) / 2, height: (PHOTO_WIDTH - 4) / 2 },
   file: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 200, maxWidth: 280 },

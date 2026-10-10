@@ -7,7 +7,7 @@ import { PostBars, type PostBar } from '@/components/report/PostBars';
 import { StatTile } from '@/components/report/StatTile';
 import { Screen } from '@/components/Screen';
 import { taskStyles } from '@/components/task/styles';
-import { colors } from '@/components/theme';
+import { colors, fonts } from '@/components/theme';
 import { Button, Card, ErrorText } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { formatDate } from '@/lib/format';
@@ -227,7 +227,7 @@ export default function ReportsScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: colors.text },
+  title: { fontSize: 20, fontFamily: fonts.display, color: colors.text },
   muted: { fontSize: 14, color: colors.muted },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
 });

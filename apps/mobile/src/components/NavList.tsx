@@ -3,7 +3,7 @@ import { router, type Href } from 'expo-router';
 import type { ComponentProps, ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors } from './theme';
+import { colors, outlined } from './theme';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -62,7 +62,7 @@ export function EmptyCounters({ items }: { items: { title: string; count?: numbe
     <View style={styles.counters}>
       {items.map((item) => (
         <View key={item.title} style={styles.counter}>
-          <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+          <Ionicons name="checkmark-circle" size={16} color={colors.success} />
           <Text style={styles.counterText}>
             {item.title} · {item.count ?? 0}
           </Text>
@@ -80,6 +80,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+    ...outlined,
   },
   title: { fontSize: 18, fontWeight: '600', color: colors.text, paddingTop: 12, paddingBottom: 4 },
   row: {

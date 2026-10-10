@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Screen } from "@/components/Screen";
 import { TaskStatusBadge } from "@/components/TaskStatusBadge";
-import { colors } from "@/components/theme";
+import { colors, tints } from "@/components/theme";
 import { Card, ErrorText } from "@/components/ui";
 import { useI18n } from "@/i18n";
 import { dayKey } from "@/lib/datetime";
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     minWidth: 18,
     paddingHorizontal: 4,
     borderRadius: 9,
-    backgroundColor: "#E0E7FF",
+    backgroundColor: tints.accent.bg,
     alignItems: "center",
   },
   dotSelected: { backgroundColor: colors.primaryText },

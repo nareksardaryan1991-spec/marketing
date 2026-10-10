@@ -2,9 +2,10 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { photoUrl } from '@/lib/avatars';
 
-import { colors } from './theme';
+import { colors, textOn } from './theme';
 
-// Фото профиля, а если его нет — первые буквы имени на цвете из кабинета.
+// Фото профиля, а если его нет — первые буквы имени на цвете из кабинета
+// (цвет не выбран — серый кружок с салатовыми буквами).
 export function Avatar({
   name,
   path,
@@ -27,9 +28,12 @@ export function Avatar({
   const box = { width: size, height: size, borderRadius: size / 2 };
 
   if (url) return <Image source={{ uri: url }} style={[box, styles.border]} />;
+  const background = color ?? colors.surfaceAlt;
   return (
-    <View style={[box, styles.border, styles.empty, { backgroundColor: color ?? colors.primary }]}>
-      <Text style={[styles.initials, { fontSize: size * 0.38 }]}>{initials || '?'}</Text>
+    <View style={[box, styles.border, styles.empty, { backgroundColor: background }]}>
+      <Text style={[styles.initials, { fontSize: size * 0.38, color: color ? textOn(color) : colors.primary }]}>
+        {initials || '?'}
+      </Text>
     </View>
   );
 }
@@ -37,5 +41,5 @@ export function Avatar({
 const styles = StyleSheet.create({
   border: { borderWidth: 3, borderColor: colors.surface },
   empty: { alignItems: 'center', justifyContent: 'center' },
-  initials: { color: colors.primaryText, fontWeight: '700' },
+  initials: { fontWeight: '700' },
 });

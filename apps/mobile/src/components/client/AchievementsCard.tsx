@@ -6,7 +6,7 @@ import { useI18n } from '@/i18n';
 import { achievements } from '@/lib/achievements';
 import { supabase } from '@/lib/supabase';
 
-import { colors } from '../theme';
+import { colors, fonts } from '../theme';
 import { Card } from '../ui';
 
 // «Ваши успехи» на главной клиента — спокойно, без всплывающих окон: появляется
@@ -54,6 +54,6 @@ const styles = StyleSheet.create({
   tiles: { flexDirection: 'row', gap: 12 },
   tile: { flex: 1, gap: 4, padding: 12, borderRadius: 12, backgroundColor: colors.background },
   label: { fontSize: 13, color: colors.muted },
-  value: { fontSize: 28, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
+  value: { fontSize: 26, fontFamily: fonts.display, color: colors.text, fontVariant: ['tabular-nums'] },
   muted: { fontSize: 14, color: colors.muted },
 });

@@ -23,6 +23,7 @@ import { useI18n } from '@/i18n';
 import { formatDuration, MAX_FILE_BYTES, pickChatFiles, type PendingFile } from '@/lib/chat';
 
 import { chatColors } from './chatTheme';
+import { colors } from '@/components/theme';
 
 export type ComposerBanner = { icon: string; title: string; text: string } | null;
 
@@ -271,11 +272,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
     gap: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E1E3EA',
+    borderTopColor: colors.border,
   },
-  error: { color: '#DC2626', fontSize: 13, paddingHorizontal: 6 },
+  error: { color: colors.danger, fontSize: 13, paddingHorizontal: 6 },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 6 },
   bannerIcon: { fontSize: 18, color: chatColors.accent },
   bannerText: { flex: 1, borderLeftWidth: 2, borderLeftColor: chatColors.accent, paddingLeft: 8 },
@@ -290,7 +291,7 @@ const styles = StyleSheet.create({
     maxWidth: 220,
     paddingRight: 8,
     borderRadius: 10,
-    backgroundColor: '#F1F3F7',
+    backgroundColor: colors.surface,
     overflow: 'hidden',
   },
   fileThumb: { width: 40, height: 40 },
@@ -309,7 +310,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     fontSize: 15,
     color: chatColors.text,
-    backgroundColor: '#F1F3F7',
+    backgroundColor: colors.surface,
   },
   round: {
     width: 40,
@@ -319,12 +320,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  roundIcon: { color: '#FFFFFF', fontSize: 17, marginLeft: 2, fontWeight: '700' },
+  roundIcon: { color: chatColors.accentText, fontSize: 17, marginLeft: 2, fontWeight: '700' },
   mic: { backgroundColor: 'transparent' },
   micIcon: { fontSize: 22 },
   disabled: { opacity: 0.4 },
   recording: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 40, paddingLeft: 10 },
-  redDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
+  redDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.danger },
   recordingText: { fontSize: 15, color: chatColors.text },
   cancelRec: { paddingHorizontal: 10, height: 40, justifyContent: 'center' },
   cancelRecText: { color: chatColors.accent, fontSize: 15, fontWeight: '600' },
@@ -335,7 +336,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
   },
-  menu: { width: '100%', maxWidth: 360, backgroundColor: '#FFFFFF', borderRadius: 16, paddingVertical: 6 },
+  menu: { width: '100%', maxWidth: 360, backgroundColor: colors.surface, borderRadius: 16, paddingVertical: 6 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 18, paddingVertical: 14 },
   menuIcon: { fontSize: 20 },
   menuText: { fontSize: 16, color: chatColors.text },

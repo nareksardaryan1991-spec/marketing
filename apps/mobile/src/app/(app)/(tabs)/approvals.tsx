@@ -1,12 +1,13 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ProfileGrid, type GridItem } from '@/components/approval/ProfileGrid';
 import { ReviewItem, type ReviewTask } from '@/components/approval/ReviewItem';
+import { StoryReview } from '@/components/approval/StoryReview';
 import { EmptyState } from '@/components/EmptyState';
 import { Screen } from '@/components/Screen';
-import { colors } from '@/components/theme';
+import { colors, theme } from '@/components/theme';
 import { Button, Card, ErrorText } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { loadAutoApproveDays } from '@/lib/approvals';
@@ -37,6 +38,9 @@ export default function ApprovalsScreen() {
   const [confirmAll, setConfirmAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stories, setStories] = useState(false);
+  // Оформление «как сторис»: при первом заходе материалы сразу открываются на весь экран.
+  const autoOpened = useRef(false);
 
   const load = useCallback(async () => {
     const [waitingRes, gridRes, days] = await Promise.all([
@@ -60,6 +64,10 @@ export default function ApprovalsScreen() {
     const rows = (waitingRes.data as WaitingRow[] | null) ?? [];
     const gridRows = sortGrid((gridRes.data as GridRow[] | null) ?? []);
     setWaiting(rows);
+    if (theme.storyApprovals && !autoOpened.current && rows.length > 0) {
+      autoOpened.current = true;
+      setStories(true);
+    }
     setGrid(gridRows);
     setAutoDays(days);
     setConfirmAll(false);
@@ -149,6 +157,23 @@ export default function ApprovalsScreen() {
         </Card>
       ) : (
         <>
+          {stories && (
+            <StoryReview
+              items={waiting.map((task) => ({ task, title: taskTitle(task, task.services?.name, language) }))}
+              urls={urls}
+              name={name}
+              avatarUrl={avatar}
+              autoDays={autoDays}
+              onClose={() => {
+                setStories(false);
+                load();
+              }}
+            />
+          )}
+          <Card>
+            <Text style={styles.muted}>{t('approvals.storyHint')}</Text>
+            <Button title={t('approvals.storyOpen')} onPress={() => setStories(true)} />
+          </Card>
           {waiting.length > 1 && (
             <Card>
               <Text style={styles.muted}>{t('approvals.allHint', { count: waiting.length })}</Text>

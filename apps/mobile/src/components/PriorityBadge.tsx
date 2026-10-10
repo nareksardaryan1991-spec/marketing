@@ -2,12 +2,13 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
 import type { TaskPriority } from '@/lib/types';
+import { tints } from '@/components/theme';
 
 const TONES: Record<TaskPriority, { bg: string; fg: string }> = {
-  low: { bg: '#F3F4F6', fg: '#4B5563' },
-  normal: { bg: '#E0F2FE', fg: '#075985' },
-  high: { bg: '#FFEDD5', fg: '#9A3412' },
-  urgent: { bg: '#FEE2E2', fg: '#991B1B' },
+  low: tints.neutral,
+  normal: tints.blue,
+  high: tints.orange,
+  urgent: tints.red,
 };
 
 // Важность задачи команды. Обычную не показываем в списках (quiet), чтобы выделялись важные.

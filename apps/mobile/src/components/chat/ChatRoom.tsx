@@ -44,6 +44,7 @@ import { ForwardSheet } from './ForwardSheet';
 import { MediaViewer } from './MediaViewer';
 import { MessageBubble, type ReactionGroup } from './MessageBubble';
 import { MessageMenu, type MenuAction } from './MessageMenu';
+import { colors } from '@/components/theme';
 
 const GROUP_GAP_MS = 10 * 60 * 1000;
 const COLUMN = 760;
@@ -520,7 +521,7 @@ export function ChatRoom({ chat, id, embedded }: ChatRef & { embedded?: boolean 
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#FFFFFF' },
+  screen: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   column: { width: '100%', maxWidth: COLUMN, alignSelf: 'center' },
   embeddedHeader: {
@@ -530,8 +531,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E1E3EA',
-    backgroundColor: '#FFFFFF',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   callButtons: { flexDirection: 'row', gap: 4, marginRight: 4 },
   callButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
@@ -547,16 +548,16 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E1E3EA',
+    borderBottomColor: colors.border,
   },
   pinnedBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: chatColors.accent },
   pinnedText: { flex: 1 },
   pinnedTitle: { fontSize: 13, fontWeight: '700', color: chatColors.accent },
   pinnedBody: { fontSize: 13, color: chatColors.text },
   pinnedClose: { fontSize: 16, color: chatColors.meta, padding: 4 },
-  error: { color: '#DC2626', backgroundColor: '#FFFFFF', padding: 8, fontSize: 13 },
+  error: { color: colors.danger, backgroundColor: colors.surface, padding: 8, fontSize: 13 },
   list: { paddingVertical: 10, flexGrow: 1 },
   groupGap: { marginTop: 6 },
   dayPill: {
@@ -577,7 +578,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -597,7 +598,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20, 30, 45, 0.85)',
   },
   toastText: { color: '#FFFFFF', fontSize: 14 },
-  composerBar: { alignSelf: 'stretch', width: '100%', backgroundColor: '#FFFFFF' },
+  composerBar: { alignSelf: 'stretch', width: '100%', backgroundColor: colors.background },
   suggest: { alignSelf: 'flex-start', paddingHorizontal: 6 },
   suggestText: { color: chatColors.accent, fontWeight: '600' },
 });

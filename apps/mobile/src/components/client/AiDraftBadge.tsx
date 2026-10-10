@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
+import { tints } from '@/components/theme';
 
 // Пометка на всём, что AI сделал без проверки человеком.
 export function AiDraftBadge() {
@@ -18,7 +19,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: tints.amber.bg,
   },
-  text: { fontSize: 13, fontWeight: '600', color: '#92400E' },
+  text: { fontSize: 13, fontWeight: '600', color: tints.amber.fg },
 });

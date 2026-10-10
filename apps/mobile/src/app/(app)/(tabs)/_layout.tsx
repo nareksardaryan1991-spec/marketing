@@ -1,12 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router/js-tabs';
-import type { ColorValue } from 'react-native';
+import { StyleSheet, View, type ColorValue } from 'react-native';
 
 import type { IconName } from '@/components/NavList';
-import { colors } from '@/components/theme';
+import { colors, fonts, outlinedSmall } from '@/components/theme';
 import { useI18n } from '@/i18n';
 import { canUseAgents, isEmployeeRole } from '@/lib/roles';
-import { useUnreadChats, useWaitingApprovals } from '@/lib/useBadges';
+import { useUnreadChats, useUnreadTaskNotifications, useWaitingApprovals } from '@/lib/useBadges';
 import { useAuth } from '@/providers/AuthProvider';
 
 // Нижнее меню: у каждой роли свои вкладки, остальное — в «Профиле».
@@ -21,10 +21,17 @@ export default function TabsLayout() {
   const agents = canUseAgents(profile?.role);
   const unread = useUnreadChats(!!profile);
   const waiting = useWaitingApprovals(client);
+  const taskNews = useUnreadTaskNotifications(staff);
 
+  // Активная вкладка — значок на салатовой «таблетке», как в макете B.
   const icon = (name: IconName, active: IconName) =>
     function Icon({ color, size, focused }: { color: ColorValue; size: number; focused: boolean }) {
-      return <Ionicons name={focused ? active : name} size={size} color={color as string} />;
+      if (!focused) return <Ionicons name={name} size={size} color={color as string} />;
+      return (
+        <View style={styles.activePill}>
+          <Ionicons name={active} size={size - 2} color={colors.primaryText} />
+        </View>
+      );
     };
 
   return (
@@ -32,12 +39,14 @@ export default function TabsLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, minHeight: 60 },
+        // Меню «парит» над фоном: скруглённая плашка с отступами по краям.
+        tabBarStyle: styles.tabBar,
         // До шести вкладок на телефоне шириной 360 px: подписи по-армянски длиннее — шрифт мельче, без боковых полей.
-        tabBarLabelStyle: { fontSize: 10, marginBottom: 2 },
+        tabBarLabelStyle: { fontSize: 10, marginBottom: 2, fontFamily: fonts.medium },
         tabBarItemStyle: { paddingHorizontal: 0, paddingVertical: 4 },
+        tabBarBadgeStyle: { backgroundColor: colors.danger, color: colors.dangerText, fontFamily: fonts.bold },
         headerTintColor: colors.primary,
-        headerTitleStyle: { color: colors.text },
+        headerTitleStyle: { color: colors.text, fontFamily: fonts.display, fontSize: 20 },
         headerStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
       }}>
@@ -79,6 +88,7 @@ export default function TabsLayout() {
           title: t('teamTasks.title'),
           tabBarLabel: t('tabs.teamTasks'),
           href: staff ? undefined : null,
+          tabBarBadge: taskNews || undefined,
           tabBarIcon: icon('people-outline', 'people'),
         }}
       />
@@ -109,3 +119,24 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBar: {
+    backgroundColor: colors.tabBar,
+    borderTopWidth: 0,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 28,
+    marginHorizontal: 10,
+    marginBottom: 10,
+    minHeight: 64,
+    paddingTop: 4,
+    ...outlinedSmall,
+  },
+  activePill: {
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+  },
+});

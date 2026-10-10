@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
-import { colors } from '@/components/theme';
+import { colors, fonts } from '@/components/theme';
 import { useI18n } from '@/i18n';
 import { registerPush } from '@/lib/push';
 import { supabase } from '@/lib/supabase';
@@ -40,7 +40,7 @@ export default function AppLayout() {
     <Stack
       screenOptions={{
         headerTintColor: colors.primary,
-        headerTitleStyle: { color: colors.text },
+        headerTitleStyle: { color: colors.text, fontFamily: fonts.display, fontSize: 18 },
         headerStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
       }}>
@@ -52,6 +52,8 @@ export default function AppLayout() {
       <Stack.Screen name="notifications" options={{ title: t('notify.title') }} />
       <Stack.Screen name="tasks/[id]" options={{ title: t('task.task') }} />
       <Stack.Screen name="team-tasks/edit" options={{ title: t('teamTasks.title') }} />
+      <Stack.Screen name="team-tasks/projects" options={{ title: t('teamTasks.projects.title') }} />
+      <Stack.Screen name="team-tasks/inbox" options={{ title: t('teamTasks.inbox.title') }} />
       <Stack.Screen name="team" options={{ title: t('team.title') }} />
       <Stack.Screen name="calendar" options={{ title: t('calendar.title') }} />
       <Stack.Screen name="social" options={{ title: t('social.title') }} />

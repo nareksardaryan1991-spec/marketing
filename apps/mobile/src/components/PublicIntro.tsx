@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
 
-import { colors } from './theme';
+import { colors, fonts } from './theme';
 
 // Что это за сервис — на экране входа (это публичная главная для тех, кто не вошёл).
 // Тот же текст лежит готовым HTML в public/index.html для поисковиков и превью ссылок.
@@ -29,7 +29,7 @@ export function PublicIntro() {
 
 const styles = StyleSheet.create({
   box: { gap: 8, marginTop: 16, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  title: { fontSize: 20, fontWeight: '700', color: colors.text },
+  title: { fontSize: 20, fontFamily: fonts.display, color: colors.text },
   lead: { fontSize: 15, lineHeight: 22, color: colors.muted },
   subtitle: { fontSize: 16, fontWeight: '600', color: colors.text, marginTop: 4 },
   point: { flexDirection: 'row', gap: 8 },

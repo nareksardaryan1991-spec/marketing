@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import type { Deliverable, Task } from '@/lib/types';
 
 import { HumanCheckBadge } from '../HumanCheckBadge';
-import { colors } from '../theme';
+import { colors, tints } from '../theme';
 import { Button, Card, ErrorText, Field } from '../ui';
 import type { NumberedMark } from './MarkDots';
 import { PostPreview } from './PostPreview';
@@ -24,6 +24,7 @@ export function ReviewItem({
   avatarUrl,
   urls,
   autoDays,
+  startInChanges = false,
   onDone,
 }: {
   task: ReviewTask;
@@ -32,10 +33,12 @@ export function ReviewItem({
   avatarUrl: string | null;
   urls: Record<string, string>;
   autoDays: number;
+  // Сразу открыть форму правок (из просмотра «как сторис» после свайпа влево).
+  startInChanges?: boolean;
   onDone: () => void;
 }) {
   const { t, language } = useI18n();
-  const [changes, setChanges] = useState(false);
+  const [changes, setChanges] = useState(startInChanges);
   const [marks, setMarks] = useState<NumberedMark[]>([]);
   // Секунда видео, введённая вручную (в приложении видео играет вне превью).
   const [secText, setSecText] = useState<Record<number, string>>({});
@@ -194,11 +197,11 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   title: { fontSize: 17, fontWeight: '700', color: colors.text },
   muted: { fontSize: 13, color: colors.muted },
-  deadline: { fontSize: 13, color: '#9D174D' },
+  deadline: { fontSize: 13, color: tints.pink.fg },
   hint: { fontSize: 14, color: colors.muted },
-  mark: { gap: 6, padding: 10, borderRadius: 12, backgroundColor: '#FEF2F2' },
+  mark: { gap: 6, padding: 10, borderRadius: 12, backgroundColor: tints.red.bg },
   markHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  markN: { fontWeight: '700', color: '#B91C1C' },
+  markN: { fontWeight: '700', color: tints.red.fg },
   seconds: {
     width: 90,
     borderWidth: 1,

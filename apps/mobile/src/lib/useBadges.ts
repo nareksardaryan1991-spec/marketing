@@ -48,3 +48,24 @@ export function useWaitingApprovals(enabled: boolean): number {
 
   return count;
 }
+
+// Непрочитанные уведомления по задачам команды (лента в разделе «Команда»).
+export function useUnreadTaskNotifications(enabled: boolean): number {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const load = () =>
+      supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('payload->>kind', 'team')
+        .is('read_at', null)
+        .then(({ count: n }) => setCount(n ?? 0));
+    load();
+    const timer = setInterval(load, 15000);
+    return () => clearInterval(timer);
+  }, [enabled]);
+
+  return count;
+}

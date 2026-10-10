@@ -7,7 +7,7 @@ import { Avatar } from '@/components/Avatar';
 import { Screen } from '@/components/Screen';
 import { StatusBadge } from '@/components/StatusBadge';
 import { TasksList } from '@/components/TasksList';
-import { colors } from '@/components/theme';
+import { colors, fonts, tints, outlinedSmall } from '@/components/theme';
 import { Card, ErrorText } from '@/components/ui';
 import { useI18n } from '@/i18n';
 import { agentById } from '@/lib/agents';
@@ -205,39 +205,40 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   label: { fontSize: 13, color: colors.muted, textTransform: 'uppercase' },
-  revenue: { fontSize: 32, fontWeight: '800', color: colors.text },
+  revenue: { fontSize: 36, fontFamily: fonts.display, color: colors.text, letterSpacing: -0.5 },
   muted: { fontSize: 14, color: colors.muted },
-  up: { color: '#16A34A', fontWeight: '700' },
-  danger: { color: '#DC2626', fontWeight: '700' },
-  warn: { color: '#D97706' },
+  up: { color: colors.primary, fontWeight: '700' },
+  danger: { color: colors.danger, fontWeight: '700' },
+  warn: { color: colors.warning },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tile: {
     flexGrow: 1,
     flexBasis: '45%',
     minWidth: 120,
-    padding: 14,
-    borderRadius: 14,
+    padding: 16,
+    borderRadius: 22,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
-    gap: 2,
+    borderColor: colors.surface,
+    gap: 4,
+    ...outlinedSmall,
   },
-  tileDanger: { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' },
-  tileValue: { fontSize: 26, fontWeight: '800', color: colors.text },
+  tileDanger: { borderColor: colors.dangerBorder, backgroundColor: tints.red.bg },
+  tileValue: { fontSize: 26, fontFamily: fonts.display, color: colors.text },
   tileLabel: { fontSize: 13, color: colors.muted },
-  cardTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
+  cardTitle: { fontSize: 17, fontFamily: fonts.display, color: colors.text },
   person: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   personBody: { flex: 1, gap: 4 },
   personLine: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
   personName: { flexShrink: 1, fontSize: 15, fontWeight: '600', color: colors.text },
-  barTrack: { height: 8, borderRadius: 4, backgroundColor: '#ECEEF4', overflow: 'hidden' },
+  barTrack: { height: 8, borderRadius: 4, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
   bar: { height: 8, borderRadius: 4, backgroundColor: colors.primary },
   personStats: { fontSize: 13, color: colors.muted },
-  segment: { flexDirection: 'row', alignSelf: 'flex-start', padding: 3, borderRadius: 10, backgroundColor: '#ECEEF4' },
+  segment: { flexDirection: 'row', alignSelf: 'flex-start', padding: 3, borderRadius: 14, backgroundColor: colors.surfaceAlt },
   segmentItem: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
-  segmentActive: { backgroundColor: colors.surface },
+  segmentActive: { backgroundColor: colors.primary },
   segmentText: { fontSize: 14, color: colors.muted },
-  segmentTextActive: { color: colors.text, fontWeight: '600' },
+  segmentTextActive: { color: colors.primaryText, fontWeight: '600' },
   orderLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
   orderCount: { fontSize: 16, fontWeight: '700', color: colors.text },
 });

@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
   serviceName: { fontSize: 16, fontWeight: '600', color: colors.text },
   price: { fontSize: 15, color: colors.primary, fontWeight: '500' },
   muted: { fontSize: 14, color: colors.muted },
-  promoOk: { fontSize: 15, fontWeight: '600', color: '#047857' },
+  promoOk: { fontSize: 15, fontWeight: '600', color: colors.success },
   link: { fontSize: 15, color: colors.primary },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   total: { fontSize: 18, fontWeight: '700', color: colors.text },

@@ -669,21 +669,84 @@ const lead = await openAs('manager@demo.am');
 await lead.goto(`${BASE}/team-tasks`, { waitUntil: 'networkidle0' });
 await waitText(lead, 'Фотосессия десертов');
 const leadBoard = await text(lead);
-check('team tasks board: own columns and demo tasks',
-  leadBoard.includes('Фотосессия десертов') && leadBoard.includes('Новая задача') &&
-  ['Новые', 'В работе', 'На проверке', 'Готово'].every((c) => leadBoard.includes(c)));
+check('team tasks list: a manager sees all team tasks, with projects, tags and the overdue one',
+  leadBoard.includes('Фотосессия десертов') && leadBoard.includes('Обновить шаблоны сторис') &&
+  leadBoard.includes('Новая задача') && leadBoard.includes('Мои задачи') && leadBoard.includes('Cafe Aroma') &&
+  leadBoard.includes('#съёмка') && leadBoard.includes('🔴 Просроченные') && !leadBoard.includes('Проекты'));
+await lead.type('input[placeholder^="Поиск"]', '#отчёт');
+await new Promise((r) => setTimeout(r, 300));
+check('search by tag finds only the report', (await text(lead)).includes('Подготовить отчёт') &&
+  !(await text(lead)).includes('Фотосессия десертов'));
+await lead.click('input[placeholder^="Поиск"]', { clickCount: 3 });
+await lead.keyboard.press('Backspace');
+await (await firstVisible(lead, '::-p-text(Проект ▾)')).click();
+await (await firstVisible(lead, '::-p-text(Бренд агентства)')).click();
+await new Promise((r) => setTimeout(r, 300));
+check('project filter leaves only that project', (await text(lead)).includes('Обновить шаблоны сторис') &&
+  !(await text(lead)).includes('Фотосессия десертов') && (await text(lead)).includes('Проект: Бренд агентства'));
+await (await firstVisible(lead, '::-p-text(Сбросить)')).click();
+await (await firstVisible(lead, '::-p-text(▦ Доска)')).click();
+await waitText(lead, 'Бэклог');
+const boardText = await text(lead);
+check('board view has five stages', ['Бэклог', 'К выполнению', 'В работе', 'На проверке', 'Готово'].every((c) => boardText.includes(c)));
+// Перетаскивание на широком экране: автор переносит задачу из «В работе» в «К выполнению» за ручку ⠿.
+await lead.setViewport({ width: 1400, height: 900 });
+await new Promise((r) => setTimeout(r, 500));
+const centerOf = (page, fn, arg) => page.evaluate(fn, arg);
+const handleAt = await centerOf(lead, (title) => {
+  const card = [...document.querySelectorAll('div')].find((d) => d.childElementCount === 0 && d.textContent === title);
+  let row = card;
+  while (row && !row.querySelector('[aria-label="Переместить"]')) row = row.parentElement;
+  const r = row.querySelector('[aria-label="Переместить"]').getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+}, 'Фотосессия десертов для осеннего меню');
+const columnAt = await centerOf(lead, (name) => {
+  const head = [...document.querySelectorAll('div')].find((d) => d.childElementCount === 0 && d.textContent === name);
+  const r = head.getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + 120 };
+}, 'К выполнению');
+await lead.mouse.move(handleAt.x, handleAt.y);
+await lead.mouse.down();
+for (let i = 1; i <= 12; i++) {
+  await lead.mouse.move(handleAt.x + ((columnAt.x - handleAt.x) * i) / 12, handleAt.y + ((columnAt.y - handleAt.y) * i) / 12);
+  await new Promise((r) => setTimeout(r, 30));
+}
+check('while dragging, the target column says where the task goes', (await text(lead)).includes('→ К выполнению'));
+await lead.mouse.up();
+await new Promise((r) => setTimeout(r, 800));
+// Этап задачи — прямо с сервера, под входом этой страницы.
+const statusOf = (page, title) => page.evaluate(async (base, prefix) => {
+  const session = JSON.parse(Object.entries(localStorage).find(([k]) => k.includes('auth'))?.[1] ?? '{}');
+  const res = await fetch(`${base}/rest/v1/tasks?kind=eq.team&select=title,status`, {
+    headers: { apikey: 'demo', Authorization: `Bearer ${session.access_token}` },
+  });
+  return (await res.json()).find((t) => t.title.startsWith(prefix))?.status;
+}, BASE, title);
+const movedStatus = await statusOf(lead, 'Фотосессия десертов');
+check('drag and drop changes the stage on the server: ' + movedStatus, movedStatus === 'assigned');
+await lead.screenshot({ path: `${SCREENS}team-board-wide.png` });
+await lead.setViewport({ width: 390, height: 780 });
+await new Promise((r) => setTimeout(r, 500));
+await (await firstVisible(lead, '::-p-text(☰ Список)')).click();
 await (await firstVisible(lead, '::-p-text(Новая задача)')).click();
 await waitText(lead, 'Поставить задачу');
 await (await fieldByLabel(lead, 'Название')).type('Снять витрину к выходным');
 await (await fieldByLabel(lead, 'Описание')).type('Десерты при утреннем свете, 10 кадров');
 await (await firstVisible(lead, '::-p-text(Гор Мкртчян)')).click();
 await (await firstVisible(lead, '::-p-text(Срочно)')).click();
-await (await firstVisible(lead, '::-p-text(Cafe Aroma)')).click();
+await (await firstVisible(lead, '::-p-text(Бренд агентства)')).click();
+await (await fieldByLabel(lead, 'Теги')).type('#Витрина, фото');
+// Клиент: «Cafe Aroma» есть и среди проектов — берём последний на странице (блок «Клиент»).
+await lead.evaluate(() => {
+  const all = [...document.querySelectorAll('div')].filter((d) => d.childElementCount === 0 && d.textContent === 'Cafe Aroma');
+  all.at(-1)?.click();
+});
 // После выбора клиента подгружаются его заказы — форма перерисовывается.
 await waitText(lead, 'Без заказа');
 await (await firstVisible(lead, '::-p-text(Поставить задачу)')).click();
-check('new team task opens with the assignment', await waitText(lead, 'Снять витрину к выходным') &&
-  await waitText(lead, 'Задание') && (await text(lead)).includes('Гор Мкртчян') && (await text(lead)).includes('Срочно'));
+check('new team task opens with the assignment, project and clean tags', await waitText(lead, 'Снять витрину к выходным') &&
+  await waitText(lead, 'Задание') && (await text(lead)).includes('Гор Мкртчян') && (await text(lead)).includes('Срочно') &&
+  (await text(lead)).includes('Бренд агентства') && (await text(lead)).includes('#витрина #фото'));
 const teamTaskUrl = lead.url();
 check('team task has no client or publishing parts',
   !(await text(lead)).includes('Отправить клиенту') && !(await text(lead)).includes('Поручить AI-агенту'));
@@ -692,11 +755,38 @@ const teamWorker = await openAs('employee@demo.am');
 await teamWorker.goto(`${BASE}/team-tasks`, { waitUntil: 'networkidle0' });
 await waitText(teamWorker, 'Фотосессия десертов');
 const workerBoard = await text(teamWorker);
-// На телефоне видна одна колонка — новая задача в «Новых».
-await (await firstVisible(teamWorker, '::-p-text(Новые)')).click();
-check('employee sees own team tasks only, cannot create',
-  workerBoard.includes('Фотосессия десертов') && !workerBoard.includes('Новая задача') &&
-  await waitText(teamWorker, 'Снять витрину к выходным') && !(await text(teamWorker)).includes('Собрать референсы'));
+check('employee opens «My tasks», sees own team tasks only, cannot create or manage projects',
+  workerBoard.includes('Фотосессия десертов') && !workerBoard.includes('Новая задача') && !workerBoard.includes('Проекты') &&
+  await waitText(teamWorker, 'Снять витрину к выходным') && !(await text(teamWorker)).includes('Собрать референсы') &&
+  !(await text(teamWorker)).includes('Обновить шаблоны сторис'));
+// На телефоне: нажатие на ⠿ открывает «Переместить в…» — только разрешённые этапы.
+await (await firstVisible(teamWorker, '::-p-text(▦ Доска)')).click();
+await waitText(teamWorker, 'Бэклог');
+await teamWorker.evaluate((title) => {
+  const card = [...document.querySelectorAll('div')].find((d) => d.childElementCount === 0 && d.textContent === title);
+  let row = card;
+  while (row && !row.querySelector('[aria-label="Переместить"]')) row = row.parentElement;
+  row.scrollIntoView();
+}, 'Подготовить отчёт за сентябрь');
+const reportHandle = await teamWorker.evaluate((title) => {
+  const card = [...document.querySelectorAll('div')].find((d) => d.childElementCount === 0 && d.textContent === title);
+  let row = card;
+  while (row && !row.querySelector('[aria-label="Переместить"]')) row = row.parentElement;
+  const r = row.querySelector('[aria-label="Переместить"]').getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+}, 'Подготовить отчёт за сентябрь');
+await teamWorker.mouse.click(reportHandle.x, reportHandle.y);
+await waitText(teamWorker, 'Переместить в…');
+const menuText = await text(teamWorker);
+check('the assignee may move own task only to «in progress» or hand it in, not to backlog or done',
+  menuText.includes('На проверке — сдать результат') && !menuText.includes('Готово — принять работу'));
+await teamWorker.evaluate(() => {
+  const menu = [...document.querySelectorAll('div')].find((d) => d.childElementCount === 0 && d.textContent === 'Переместить в…').parentElement;
+  [...menu.querySelectorAll('div')].find((d) => d.childElementCount === 0 && d.textContent === 'В работе').click();
+});
+await new Promise((r) => setTimeout(r, 800));
+check('the assignee starts own task from the board menu', (await statusOf(teamWorker, 'Подготовить отчёт')) === 'in_progress');
+await teamWorker.screenshot({ path: `${SCREENS}team-board-phone.png` });
 await teamWorker.goto(teamTaskUrl, { waitUntil: 'networkidle0' });
 await (await firstVisible(teamWorker, '::-p-text(Взять в работу)')).click();
 await waitText(teamWorker, 'Комментарий к результату');
@@ -716,6 +806,32 @@ await (await firstVisible(lead, '::-p-text(Вернуть на доработк�
 await teamWorker.reload({ waitUntil: 'networkidle0' });
 check('employee sees the return comment and works again',
   await waitText(teamWorker, 'Добавь два кадра крупно') && (await text(teamWorker)).includes('В работе'));
+// Уведомления внутри сайта: комментарий участникам, возврат — исполнителю; лента с «прочитано».
+await (await fieldByLabel(teamWorker, 'Новый комментарий')).type('Сниму завтра утром');
+await teamWorker.evaluate(() => {
+  [...document.querySelectorAll('div')].find((d) => d.childElementCount === 0 && d.textContent === 'Отправить').click();
+});
+await waitText(teamWorker, 'Сниму завтра утром');
+await teamWorker.goto(`${BASE}/team-tasks/inbox`, { waitUntil: 'networkidle0' });
+check('the assignee sees the return with its comment in the task notifications',
+  await waitText(teamWorker, 'Задачу вернули на доработку') && (await text(teamWorker)).includes('Добавь два кадра крупно') &&
+  (await text(teamWorker)).includes('Вам поручили задачу'));
+await lead.goto(`${BASE}/team-tasks`, { waitUntil: 'networkidle0' });
+await waitText(lead, 'Фотосессия десертов');
+check('the author has a bell with unread task notifications',
+  await lead.evaluate(() => /^\d+$/.test(document.querySelector('[aria-label="Уведомления по задачам"]')?.textContent.replace('🔔', '') ?? '')));
+await (await firstVisible(lead, '[aria-label="Уведомления по задачам"]')).click();
+check('the author sees the comment, the hand-in and the status change',
+  await waitText(lead, 'Гор Мкртчян: Сниму завтра утром') && (await text(lead)).includes('Работу сдали — проверьте') &&
+  (await text(lead)).includes('К выполнению → В работе'));
+await lead.screenshot({ path: `${SCREENS}team-inbox.png`, fullPage: true });
+await (await firstVisible(lead, '::-p-text(Отметить все прочитанными)')).click();
+await new Promise((r) => setTimeout(r, 500));
+check('mark all as read', !(await text(lead)).includes('Отметить все прочитанными'));
+await lead.goto(teamTaskUrl, { waitUntil: 'networkidle0' });
+await teamWorker.goto(teamTaskUrl, { waitUntil: 'networkidle0' });
+await waitText(teamWorker, 'Комментарий к результату');
+await new Promise((r) => setTimeout(r, 1500));
 await (await fieldByLabel(teamWorker, 'Комментарий к результату')).type(' + крупные планы');
 await (await firstVisible(teamWorker, '::-p-text(Отправить на проверку)')).click();
 await waitText(teamWorker, 'На проверке');
@@ -723,6 +839,22 @@ await lead.reload({ waitUntil: 'networkidle0' });
 await (await firstVisible(lead, '::-p-text(Принять — готово)')).click();
 check('manager accepts: the task is done', await waitText(lead, 'Готово') && !(await text(lead)).includes('Принять — готово'));
 await lead.screenshot({ path: `${SCREENS}team-task.png`, fullPage: true });
+
+// Проекты задач команды заводит владелец.
+const projectOwner = await openAs('admin@demo.am');
+await projectOwner.goto(`${BASE}/team-tasks`, { waitUntil: 'networkidle0' });
+await waitText(projectOwner, 'Фотосессия десертов');
+await projectOwner.screenshot({ path: `${SCREENS}team-tasks-list.png`, fullPage: true });
+await (await firstVisible(projectOwner, '::-p-text(▦ Доска)')).click();
+await waitText(projectOwner, 'Бэклог');
+await projectOwner.screenshot({ path: `${SCREENS}team-tasks-board.png` });
+await (await firstVisible(projectOwner, '::-p-text(Проекты)')).click();
+await waitText(projectOwner, 'Добавить проект');
+await (await fieldByLabel(projectOwner, 'Название проекта')).type('Новогодняя кампания');
+await (await firstVisible(projectOwner, '::-p-text(Добавить проект)')).click();
+check('the owner adds a project', await waitText(projectOwner, 'Новогодняя кампания') &&
+  (await text(projectOwner)).includes('Задач: 0') && (await text(projectOwner)).includes('Cafe Aroma'));
+await projectOwner.screenshot({ path: `${SCREENS}team-projects.png`, fullPage: true });
 
 const outsider = await openAs('client@demo.am');
 const outsiderHome = await text(outsider);

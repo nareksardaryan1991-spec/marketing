@@ -1,38 +1,39 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '@/i18n';
+import { teamStage, type TeamStage } from '@/lib/teamTasks';
 import type { TaskKind, TaskStatus } from '@/lib/types';
+import { tints } from '@/components/theme';
 
 const TONES: Record<TaskStatus, { bg: string; fg: string }> = {
-  new: { bg: '#FEF3C7', fg: '#92400E' },
-  assigned: { bg: '#E0F2FE', fg: '#075985' },
-  in_progress: { bg: '#E0E7FF', fg: '#3730A3' },
-  internal_review: { bg: '#F3E8FF', fg: '#6B21A8' },
-  client_review: { bg: '#FCE7F3', fg: '#9D174D' },
-  changes_requested: { bg: '#FEE2E2', fg: '#991B1B' },
-  approved: { bg: '#DCFCE7', fg: '#166534' },
-  publishing: { bg: '#CCFBF1', fg: '#115E59' },
-  published: { bg: '#E5E7EB', fg: '#374151' },
+  new: tints.amber,
+  assigned: tints.blue,
+  in_progress: tints.accent,
+  internal_review: tints.violet,
+  client_review: tints.pink,
+  changes_requested: tints.red,
+  approved: tints.green,
+  publishing: tints.teal,
+  published: tints.neutral,
 };
 
-// У задачи команды четыре понятных статуса: «Новая», «В работе», «На проверке», «Готово».
-export const TEAM_STATUS: Partial<Record<TaskStatus, string>> = {
-  new: 'new',
-  assigned: 'new',
-  in_progress: 'in_progress',
-  changes_requested: 'in_progress',
-  internal_review: 'internal_review',
-  approved: 'done',
+// Задача команды — пять этапов (src/lib/teamTasks.ts): «Бэклог», «К выполнению», «В работе», «На проверке», «Готово».
+const STAGE_TONES: Record<TeamStage, { bg: string; fg: string }> = {
+  backlog: tints.neutral,
+  todo: TONES.assigned,
+  in_progress: TONES.in_progress,
+  review: TONES.internal_review,
+  done: TONES.approved,
 };
 
 export function TaskStatusBadge({ status, kind = 'order' }: { status: TaskStatus; kind?: TaskKind }) {
   const { t } = useI18n();
-  const team = kind === 'team' ? TEAM_STATUS[status] : undefined;
-  const tone = team === 'new' ? TONES.assigned : TONES[status];
+  const stage = kind === 'team' ? teamStage(status) : null;
+  const tone = stage ? STAGE_TONES[stage] : TONES[status];
   return (
     <View style={[styles.badge, { backgroundColor: tone.bg }]}>
       <Text style={[styles.text, { color: tone.fg }]}>
-        {team ? t(`teamTasks.status.${team}`) : t(`taskStatus.${status}`)}
+        {stage ? t(`teamTasks.status.${stage}`) : t(`taskStatus.${status}`)}
       </Text>
     </View>
   );

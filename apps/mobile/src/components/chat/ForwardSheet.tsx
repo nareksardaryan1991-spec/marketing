@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 
 import { chatColors } from './chatTheme';
 import { ChatRow, chatTitle } from './ChatRow';
+import { colors } from '@/components/theme';
 
 // «Переслать в…»: любой из своих чатов, с поиском.
 export function ForwardSheet({
@@ -83,7 +84,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 480,
     maxHeight: '80%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingTop: 12,
@@ -99,7 +100,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     fontSize: 15,
-    backgroundColor: '#F1F3F7',
+    backgroundColor: colors.surfaceAlt,
     color: chatColors.text,
   },
   list: { flexGrow: 0 },

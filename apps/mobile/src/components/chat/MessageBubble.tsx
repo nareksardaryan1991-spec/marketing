@@ -22,6 +22,7 @@ import {
 import { Attachments } from './Attachments';
 import { CallCard } from './CallCard';
 import { chatColors } from './chatTheme';
+import { outlinedSmall } from '@/components/theme';
 
 export type ReactionGroup = { emoji: string; count: number; mine: boolean; names: string[] };
 
@@ -243,6 +244,7 @@ const styles = StyleSheet.create({
     shadowRadius: 1,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
+    ...outlinedSmall,
   },
   mine: { backgroundColor: chatColors.mine, borderBottomRightRadius: 4 },
   theirs: { backgroundColor: chatColors.theirs, borderBottomLeftRadius: 4 },
@@ -255,13 +257,13 @@ const styles = StyleSheet.create({
   quote: {
     borderLeftWidth: 3,
     borderLeftColor: chatColors.accent,
-    backgroundColor: 'rgba(47, 140, 240, 0.08)',
+    backgroundColor: chatColors.quote,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
     marginBottom: 4,
   },
-  quoteMine: { backgroundColor: 'rgba(47, 140, 240, 0.14)' },
+  quoteMine: { backgroundColor: chatColors.quoteMine },
   quoteAuthor: { fontSize: 13, fontWeight: '700', color: chatColors.accent },
   quoteText: { fontSize: 13, color: chatColors.text },
   attachmentsGap: { marginBottom: 4 },
@@ -288,12 +290,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: chatColors.reaction,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: chatColors.reactionBorder,
   },
   reactionMine: { backgroundColor: chatColors.accent, borderColor: chatColors.accent },
   reactionText: { fontSize: 13, color: chatColors.text },
-  reactionTextMine: { color: '#FFFFFF' },
+  reactionTextMine: { color: chatColors.accentText },
   metaLine: { height: 14 },
 });

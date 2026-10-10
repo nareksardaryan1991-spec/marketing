@@ -237,8 +237,17 @@ def task(n, platform, svc, num, status, assignee=None, publish=None, due=None, b
 
 
 # Задача команды (поручение человеку): без заказа, услуги и номера; клиент — необязательно.
+# Проекты задач команды (0038): заводит владелец, видят сотрудники.
+PROJECT_AROMA = 'pr000000-0000-4000-8000-000000000001'
+PROJECT_BRAND = 'pr000000-0000-4000-8000-000000000002'
+TEAM_PROJECTS = [
+    {'id': PROJECT_AROMA, 'name': 'Cafe Aroma', 'archived': False, 'created_by': ADMIN, 'created_at': day(-20)},
+    {'id': PROJECT_BRAND, 'name': 'Бренд агентства', 'archived': False, 'created_by': ADMIN, 'created_at': day(-20)},
+]
+
+
 def team_task(n, title, status, assignee, priority='normal', due=None, brief=None, business=None, caption=None,
-              creator=MANAGER):
+              creator=MANAGER, project=None, tags=()):
     tid = 't1000000-0000-4000-8000-%012d' % n
     deliverables = [{
         'id': 'tv%d' % n, 'task_id': tid, 'version': 1, 'caption': caption, 'files': [], 'note': None,
@@ -252,6 +261,7 @@ def team_task(n, title, status, assignee, priority='normal', due=None, brief=Non
         'publish_error': None, 'autopublish_state': {}, 'created_at': day(-3), 'updated_at': day(-1),
         'client_review_since': None, 'services': None, 'businesses': business, 'orders': None,
         'deliverables': deliverables, 'from_agent_run_id': None, 'draft_agent': None, 'reviewer_id': creator,
+        'project_id': project, 'tags': list(tags),
     }
 
 
@@ -274,10 +284,15 @@ TASKS = [
          caption='Только сегодня: второй латте — за полцены ☕☕'),
     task(10, 'instagram', 'post', 4, 'assigned', EMPLOYEE, due=day(3)[:10], brief='Фото десертов на витрине при утреннем свете'),
     team_task(1, 'Фотосессия десертов для осеннего меню', 'in_progress', EMPLOYEE, 'high', day(2)[:10],
-              'Чизкейк, тыквенный пирог и макаруны: 10–15 кадров, светлый фон, вертикаль и квадрат.', BUSINESS),
+              'Чизкейк, тыквенный пирог и макаруны: 10–15 кадров, светлый фон, вертикаль и квадрат.', BUSINESS,
+              project=PROJECT_AROMA, tags=('съёмка', 'меню')),
     team_task(2, 'Обновить шаблоны сторис в цветах бренда', 'internal_review', DESIGNER, 'normal', day(4)[:10],
-              'Три шаблона: анонс, опрос, акция.', caption='Три шаблона готовы, исходники в Figma.', creator=ADMIN),
-    team_task(3, 'Собрать референсы рилсов для кофеен', 'new', None, 'low', None, 'Пять-десять примеров, что сейчас заходит.'),
+              'Три шаблона: анонс, опрос, акция.', caption='Три шаблона готовы, исходники в Figma.', creator=ADMIN,
+              project=PROJECT_BRAND, tags=('сторис', 'дизайн')),
+    team_task(3, 'Собрать референсы рилсов для кофеен', 'new', None, 'low', None, 'Пять-десять примеров, что сейчас заходит.',
+              tags=('рилсы',)),
+    team_task(4, 'Подготовить отчёт за сентябрь', 'assigned', EMPLOYEE, 'urgent', day(-1)[:10],
+              'Охваты, подписчики, лучшие посты.', BUSINESS, project=PROJECT_AROMA, tags=('отчёт',)),
 ]
 
 # Оплаты, квитанции, решения клиента, промокоды, настройки агентства.
@@ -1087,14 +1102,15 @@ def find_task(task_id):
 
 
 # «Кто видит» и история задач команды (0032, 0034).
-# Демо: менеджер отмечен в задаче владельца — видит её, но менять не может.
+# Демо: менеджер отмечен в задаче владельца — видит её (как и все менеджеры), но менять не может.
 TASK_WATCHERS = [{'task_id': 't1000000-0000-4000-8000-000000000002', 'user_id': MANAGER}]
 TASK_HISTORY = []
 
 
+# Задачу команды видят владелец и менеджеры (0038), автор, исполнитель, проверяющий и отмеченные.
 def sees_team(t, profile):
     return t['kind'] == 'team' and (
-        profile['role'] == 'admin' or profile['id'] in (t['created_by'], t['assignee_id'], t.get('reviewer_id'))
+        is_manager(profile['role']) or profile['id'] in (t['created_by'], t['assignee_id'], t.get('reviewer_id'))
         or any(w['task_id'] == t['id'] and w['user_id'] == profile['id'] for w in TASK_WATCHERS))
 
 
@@ -1104,16 +1120,73 @@ def can_edit_team(t, profile):
         profile['role'] == 'admin' or (t['created_by'] == profile['id'] and is_manager(profile['role'])))
 
 
+# Теги как clean_task_tags в базе: без «#», строчными, без пустых и повторов. Возвращает (теги, ошибка).
+def clean_tags(tags):
+    out = []
+    for tag in tags or []:
+        tag = str(tag).strip().lstrip('#').strip().lower()
+        if tag and tag not in out:
+            out.append(tag)
+    if len(out) > 10:
+        return None, 'too many tags'
+    if any(len(tag) > 30 for tag in out):
+        return None, 'tag is too long'
+    return out, None
+
+
+def project_name(project_id):
+    return next((p['name'] for p in TEAM_PROJECTS if p['id'] == project_id), None)
+
+
 def log_history(task_id, field, old, new):
     if old != new:
         TASK_HISTORY.append({'id': 'h%d' % (len(TASK_HISTORY) + 1), 'task_id': task_id, 'actor_id': me()['id'],
                              'field': field, 'old_value': old, 'new_value': new, 'created_at': now_iso()})
 
 
-def set_status(task_, status):
-    if task_['kind'] == 'team':
-        log_history(task_['id'], 'status', task_['status'], status)
+# Уведомления по задачам команды для ленты на сайте (0029, 0035, 0039). Тому, кто задачу не видит, не пишем.
+NOTIFICATIONS = []
+
+
+def notify(user_ids, kind, task_, **extra):
+    payload = {'task_id': task_['id'], 'kind': 'team', 'title': task_['title'], 'priority': task_['priority'],
+               'business': (task_.get('businesses') or {}).get('name'), **extra}
+    for uid in dict.fromkeys(u for u in user_ids if u):
+        person = by_id(uid)
+        if person and sees_team(task_, person):
+            NOTIFICATIONS.append({'id': 'n%d' % (len(NOTIFICATIONS) + 1), 'user_id': uid, 'kind': kind,
+                                  'payload': payload, 'created_at': now_iso(), 'read_at': None})
+
+
+def notify_comment(task_, author_id, body):
+    if task_['kind'] != 'team':
+        return
+    watchers = [w['user_id'] for w in TASK_WATCHERS if w['task_id'] == task_['id']]
+    body = body.strip()
+    notify([u for u in [task_['assignee_id'], task_['created_by'], task_.get('reviewer_id'), *watchers] if u != author_id],
+           'task_comment', task_, author=by_id(author_id)['full_name'],
+           preview=body if len(body) <= 140 else body[:140] + '…')
+
+
+def set_status(task_, status, comment=None):
+    old = task_['status']
     task_['status'] = status
+    if task_['kind'] != 'team':
+        return
+    log_history(task_['id'], 'status', old, status)
+    actor = me()['id']
+    already = []
+    if status == 'internal_review':
+        already = [task_.get('reviewer_id') or task_['created_by']]
+        notify(already, 'task_review', task_)
+    elif old == 'internal_review' and status == 'in_progress':
+        already = [task_['assignee_id']]
+        notify(already, 'task_returned', task_, comment=comment)
+    elif old == 'internal_review' and status == 'approved':
+        already = [task_['assignee_id']]
+        notify(already, 'task_done', task_)
+    notify([u for u in (task_['assignee_id'], task_['created_by'], task_.get('reviewer_id')) if u != actor and u not in already],
+           'task_status', task_, **{'from': old, 'status': status, 'actor': me()['full_name']})
 
 
 def set_watchers(task_, ids, log=True):
@@ -1153,6 +1226,15 @@ def task_rpc(fn, data):
         watchers = data.get('p_watchers')
         if watchers and any(not (by_id(w) and is_employee(by_id(w)['role'])) for w in watchers):
             return None, 'watchers must be team members'
+        tags = data.get('p_tags')
+        project = data.get('p_project_id')
+        if tags is not None:
+            tags, error = clean_tags(tags)
+            if error:
+                return None, error
+            current = task_ and task_.get('project_id')
+            if project and project != current and not any(p['id'] == project and not p['archived'] for p in TEAM_PROJECTS):
+                return None, 'project not found'
         order = next((o for o in ORDERS if o['id'] == data.get('p_order_id')), None)
         business_id = order['business_id'] if order else data.get('p_business_id')
         business = next((b for b in BUSINESSES if b['id'] == business_id), None)
@@ -1160,6 +1242,9 @@ def task_rpc(fn, data):
                   'due_date': data.get('p_due_date'), 'priority': data.get('p_priority') or 'normal',
                   'business_id': business['id'] if business else None, 'businesses': business,
                   'related_order_id': order['id'] if order else None, 'reviewer_id': reviewer, 'updated_at': now_iso()}
+        # Старое приложение теги не передаёт — проект и теги остаются (как в базе).
+        if tags is not None:
+            fields.update(project_id=project, tags=tags)
         if fn == 'create_team_task':
             run = None
             if data.get('p_from_run_id'):
@@ -1174,19 +1259,26 @@ def task_rpc(fn, data):
             new['created_at'] = now_iso()
             TASKS.append(new)
             set_watchers(new, watchers or [], log=False)
+            notify([assignee], 'task_assigned', new)
             log_history(new['id'], 'created', None, title)
             return new['id'], None
-        if task_['status'] == 'new' and assignee:
+        if task_['status'] == 'new' and assignee and not task_['assignee_id']:
             fields['status'] = 'assigned'
         elif task_['status'] == 'assigned' and not assignee:
             fields['status'] = 'new'
-        for key in ('title', 'brief', 'due_date', 'priority', 'status', 'assignee_id', 'reviewer_id', 'related_order_id'):
+        for key in ('title', 'brief', 'due_date', 'priority', 'status', 'assignee_id', 'reviewer_id', 'related_order_id',
+                    'tags'):
             if key in fields:
                 log_history(task_['id'], key, task_.get(key), fields[key])
+        if 'project_id' in fields:
+            log_history(task_['id'], 'project', project_name(task_.get('project_id')), project_name(fields['project_id']))
         log_history(task_['id'], 'business', (task_.get('businesses') or {}).get('name'), business and business['name'])
+        newly_assigned = assignee and assignee != task_['assignee_id']
         task_.update(fields)
         if watchers is not None:
             set_watchers(task_, watchers)
+        if newly_assigned:
+            notify([assignee], 'task_assigned', task_)
         return None, None
     task_ = find_task(data.get('p_task_id'))
     visible = task_ and task_['id'] in {t['id'] for t in visible_tasks()}
@@ -1202,6 +1294,27 @@ def task_rpc(fn, data):
         if not can_edit_team(task_, profile):
             return None, 'only the author or the owner can change the task'
         TASKS.remove(task_)
+        return None, None
+    if fn == 'set_team_task_status':
+        status = data.get('p_status')
+        if task_['kind'] != 'team':
+            return None, 'task not found'
+        if task_['status'] == status:
+            return None, None
+        if status not in ('new', 'assigned', 'in_progress'):
+            return None, 'review and done are set by submitting and reviewing'
+        if status != 'new' and not task_['assignee_id']:
+            return None, 'task has no assignee'
+        if can_edit_team(task_, profile):
+            if task_['status'] not in ('new', 'assigned', 'in_progress', 'approved'):
+                return None, 'task is waiting for review'
+        elif task_['assignee_id'] == profile['id']:
+            if task_['status'] not in ('assigned', 'in_progress') or status == 'new':
+                return None, 'the assignee moves the task only between to do and in progress'
+        else:
+            return None, 'only the author, the owner or the assignee can move the task'
+        set_status(task_, status)
+        task_['updated_at'] = now_iso()
         return None, None
     if fn == 'start_task':
         if task_['assignee_id'] != profile['id'] or task_['status'] != 'assigned':
@@ -1234,7 +1347,7 @@ def task_rpc(fn, data):
         if task_['status'] != 'internal_review':
             return None, 'task is not waiting for review'
         if not approve:
-            set_status(task_, 'in_progress')
+            set_status(task_, 'in_progress', comment or None)
         elif task_['kind'] == 'team':
             set_status(task_, 'approved')
         else:
@@ -1248,12 +1361,14 @@ def task_rpc(fn, data):
         if comment:
             TASK_COMMENTS.append({'id': 'c%d' % (len(TASK_COMMENTS) + 1), 'task_id': task_['id'],
                                   'author_id': profile['id'], 'body': comment, 'created_at': now_iso()})
+            if approve:
+                notify_comment(task_, profile['id'], comment)
         task_['updated_at'] = now_iso()
         return None, None
     return None, 'unknown function'
 
 
-TASK_RPCS = ('create_team_task', 'update_team_task', 'set_team_task_attachments', 'delete_team_task',
+TASK_RPCS = ('create_team_task', 'update_team_task', 'set_team_task_attachments', 'delete_team_task', 'set_team_task_status',
              'start_task', 'submit_deliverable', 'review_task')
 
 
@@ -1370,7 +1485,15 @@ def rows(table, q):
             result = [t for t in result if t['platform_id'] in (None, 'instagram')]
         if q.get('order', [''])[0].startswith('client_review_since'):
             result = sorted(result, key=lambda t: t.get('client_review_since') or '')
-        return result
+        # Связь team_projects(name) — по текущему названию проекта.
+        return [{**t, 'team_projects': {'name': project_name(t['project_id'])} if t.get('project_id') else None}
+                for t in result]
+    if table == 'team_projects':
+        if not is_employee(role):
+            return []
+        visible = visible_tasks()
+        return sorted([{**p, 'tasks': [{'count': sum(1 for t in visible if t.get('project_id') == p['id'])}]}
+                       for p in TEAM_PROJECTS], key=lambda p: (p['archived'], p['name'].lower()))
     if table == 'approvals':
         tid = eq(q, 'task_id')
         visible = {t['id'] for t in visible_tasks()}
@@ -1438,6 +1561,13 @@ def rows(table, q):
         tid = eq(q, 'task_id')
         source = TASK_WATCHERS if table == 'task_watchers' else TASK_HISTORY
         return [r for r in source if r['task_id'] in visible and (not tid or r['task_id'] == tid)]
+    if table == 'notifications':
+        result = [n for n in NOTIFICATIONS if n['user_id'] == profile['id']]
+        if eq(q, 'payload->>kind'):
+            result = [n for n in result if n['payload'].get('kind') == eq(q, 'payload->>kind')]
+        if q.get('read_at', [''])[0] == 'is.null':
+            result = [n for n in result if not n['read_at']]
+        return sorted(result, key=lambda n: n['created_at'], reverse=True)
     if table == 'task_comments':
         if not is_employee(role):
             return []
@@ -1731,6 +1861,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 found = [t for t in visible_tasks() if t['id'] == data.get('p_task_id')]
                 order = found and next((o for o in ORDERS if o['id'] == found[0]['order_id']), None)
                 return self.reply(order['notes'] if order else None)
+            if fn == 'mark_notifications_read':
+                ids = data.get('p_ids')
+                for n in NOTIFICATIONS:
+                    if n['user_id'] == me()['id'] and not n['read_at'] and (ids is None or n['id'] in ids):
+                        n['read_at'] = now_iso()
+                return self.reply(None)
             if fn in TASK_RPCS:
                 result, error = task_rpc(fn, data)
                 return self.reply({'message': error}, 400) if error else self.reply(result)
@@ -1853,6 +1989,51 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(png)
             return None
+
+        # Комментарий к задаче — тем, кто видит задачу (правило task_comments через can_work_on_task).
+        if path == '/rest/v1/task_comments' and self.command == 'POST':
+            data, profile = self.body(), me()
+            task_ = find_task(data.get('task_id'))
+            visible = task_ and task_['id'] in {t['id'] for t in visible_tasks()}
+            body = (data.get('body') or '').strip()
+            if not visible or not is_employee(profile['role']) or not body or data.get('author_id', profile['id']) != profile['id']:
+                return self.reply({'message': 'new row violates row-level security policy'}, 403)
+            comment = {'id': 'c%d' % (len(TASK_COMMENTS) + 1), 'task_id': task_['id'], 'author_id': profile['id'],
+                       'body': data.get('body'), 'created_at': now_iso()}
+            TASK_COMMENTS.append(comment)
+            notify_comment(task_, profile['id'], body)
+            return self.reply(comment if self.wants_object() else [comment], 201)
+
+        # Проекты задач команды: заводит, меняет и удаляет только владелец (0038).
+        if path == '/rest/v1/team_projects' and self.command in ('POST', 'PATCH', 'DELETE'):
+            if me()['role'] != 'admin':
+                return self.reply({'message': 'new row violates row-level security policy'}, 403)
+            data = self.body() if self.command != 'DELETE' else {}
+            name = (data.get('name') or '').strip() if 'name' in data else None
+            if name == '':
+                return self.reply({'message': 'violates check constraint "team_projects_name_check"'}, 400)
+            project = next((p for p in TEAM_PROJECTS if p['id'] == eq(q, 'id')), None)
+            if name and any(p['name'].lower() == name.lower() and p is not project for p in TEAM_PROJECTS):
+                return self.reply({'message': 'duplicate key value violates unique constraint "team_projects_name_idx"'}, 409)
+            if self.command == 'POST':
+                project = {'id': 'pr000000-0000-4000-8000-%012d' % (len(TEAM_PROJECTS) + 10), 'name': name,
+                           'archived': False, 'created_by': me()['id'], 'created_at': now_iso()}
+                TEAM_PROJECTS.append(project)
+                return self.reply(project if self.wants_object() else [project], 201)
+            if not project:
+                return self.reply([])
+            if self.command == 'DELETE':
+                for t in TASKS:
+                    if t.get('project_id') == project['id']:
+                        log_history(t['id'], 'project', project['name'], None)
+                        t['project_id'] = None
+                TEAM_PROJECTS.remove(project)
+                return self.reply([])
+            if name:
+                project['name'] = name
+            if 'archived' in data:
+                project['archived'] = bool(data['archived'])
+            return self.reply([project])
 
         # Пакеты: меняет менеджер или владелец (как правила в базе).
         if path in ('/rest/v1/packages', '/rest/v1/package_items') and self.command in ('POST', 'PATCH', 'DELETE'):

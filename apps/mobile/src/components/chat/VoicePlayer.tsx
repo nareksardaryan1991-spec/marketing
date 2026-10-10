@@ -66,7 +66,7 @@ export function VoicePlayer({
               style={[
                 styles.bar,
                 { height: h },
-                { backgroundColor: i / BARS < progress ? chatColors.accent : mine ? '#9CC3EA' : '#C3CBD6' },
+                { backgroundColor: i / BARS < progress ? chatColors.accent : mine ? chatColors.voiceBarMine : chatColors.voiceBar },
               ]}
             />
           ))}
@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   disabled: { opacity: 0.5 },
-  icon: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', marginLeft: 2 },
+  icon: { color: chatColors.accentText, fontSize: 15, fontWeight: '700', marginLeft: 2 },
   body: { flex: 1, gap: 3 },
   wave: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 22 },
   bar: { width: 3, borderRadius: 2 },

@@ -23,12 +23,14 @@ import { taskStyles as styles } from './styles';
 export function TeamTaskCard({
   task,
   businessName,
+  projectName,
   people,
   canEdit,
   onChanged,
 }: {
   task: Task;
   businessName: string | null;
+  projectName: string | null;
   // Имена автора, исполнителя и проверяющего (id → имя).
   people: Record<string, string>;
   // Автор задачи или владелец.
@@ -62,7 +64,9 @@ export function TeamTaskCard({
     [t('teamTasks.createdBy'), task.created_by ? (people[task.created_by] ?? null) : null],
     [t('teamTasks.assignee'), task.assignee_id ? (people[task.assignee_id] ?? '—') : t('task.unassigned')],
     [t('teamTasks.reviewer'), task.reviewer_id ? (people[task.reviewer_id] ?? '—') : null],
+    [t('teamTasks.project'), projectName],
     [t('teamTasks.client'), businessName],
+    [t('teamTasks.tags'), task.tags?.length ? task.tags.map((tag) => `#${tag}`).join(' ') : null],
     [t('teamTasks.description'), task.brief],
     // «Передать человеку»: описание и файлы — черновик этого агента.
     [t('teamTasks.draftBy'), draftAgent ? `🤖 ${agentLabel(t, draftAgent)}` : null],

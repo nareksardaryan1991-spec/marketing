@@ -24,6 +24,7 @@ import { isEmployeeRole, roleLabel } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/types';
 import { useAuth } from '@/providers/AuthProvider';
+import { colors } from '@/components/theme';
 
 // Шире — список слева и открытый чат справа, как в Telegram на компьютере.
 const SPLIT = 900;
@@ -267,10 +268,10 @@ export default function ChatsScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#FFFFFF' },
+  screen: { flex: 1, backgroundColor: colors.background },
   split: { flex: 1, flexDirection: 'row' },
   listPane: { flex: 1, width: '100%', maxWidth: 640, alignSelf: 'center' },
-  listPaneSplit: { width: 360, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#E1E3EA' },
+  listPaneSplit: { width: 360, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: colors.border },
   roomPane: { flex: 1 },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10 },
   search: {
@@ -279,14 +280,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     fontSize: 15,
-    backgroundColor: '#F1F3F7',
+    backgroundColor: colors.surface,
     color: chatColors.text,
   },
   toolButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   toolIcon: { fontSize: 18 },
-  error: { color: '#DC2626', paddingHorizontal: 12, fontSize: 13 },
+  error: { color: colors.danger, paddingHorizontal: 12, fontSize: 13 },
   empty: { textAlign: 'center', color: chatColors.meta, marginTop: 40, fontSize: 15 },
-  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DCE6F0' },
+  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: chatColors.placeholder },
   placeholderText: {
     color: chatColors.pillText,
     backgroundColor: chatColors.pillBackground,
@@ -297,10 +298,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  sheet: { width: '100%', maxWidth: 380, maxHeight: '75%', backgroundColor: '#FFFFFF', borderRadius: 16, paddingVertical: 12 },
+  sheet: { width: '100%', maxWidth: 380, maxHeight: '75%', backgroundColor: colors.surface, borderRadius: 22, paddingVertical: 12 },
   sheetTitle: { fontSize: 17, fontWeight: '700', color: chatColors.text, paddingHorizontal: 16, paddingBottom: 8 },
   person: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
-  personPressed: { backgroundColor: '#F1F3F7' },
+  personPressed: { backgroundColor: colors.surfaceAlt },
   personText: { flex: 1 },
   personName: { fontSize: 16, fontWeight: '600', color: chatColors.text },
   personRole: { fontSize: 13, color: chatColors.meta },
@@ -312,6 +313,6 @@ const styles = StyleSheet.create({
   sheetButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
   sheetButtonPrimary: { backgroundColor: chatColors.accent },
   sheetButtonText: { fontSize: 15, fontWeight: '600', color: chatColors.accent },
-  sheetButtonTextPrimary: { color: '#FFFFFF' },
+  sheetButtonTextPrimary: { color: chatColors.accentText },
   disabled: { opacity: 0.6 },
 });

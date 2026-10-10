@@ -4,6 +4,7 @@ import { useI18n } from '@/i18n';
 import { messagePreview, REACTIONS, type ChatMessage } from '@/lib/chat';
 
 import { chatColors } from './chatTheme';
+import { colors } from '@/components/theme';
 
 export type MenuAction = 'reply' | 'forward' | 'copy' | 'edit' | 'pin' | 'unpin' | 'delete';
 
@@ -92,7 +93,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     paddingVertical: 8,
     overflow: 'hidden',
@@ -104,15 +105,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E1E3EA',
+    borderBottomColor: colors.border,
   },
   reaction: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   reactionActive: { backgroundColor: chatColors.highlight },
   reactionText: { fontSize: 22 },
   preview: { fontSize: 13, color: chatColors.meta, paddingHorizontal: 16, paddingVertical: 8 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 11 },
-  actionPressed: { backgroundColor: '#F1F3F7' },
+  actionPressed: { backgroundColor: colors.surfaceAlt },
   actionIcon: { fontSize: 17, width: 22, textAlign: 'center' },
   actionText: { fontSize: 16, color: chatColors.text },
-  danger: { color: '#DC2626' },
+  danger: { color: colors.danger },
 });

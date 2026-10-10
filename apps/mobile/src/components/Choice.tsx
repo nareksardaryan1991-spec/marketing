@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tick: { color: '#fff', fontSize: 13, fontWeight: '700', lineHeight: 15 },
+  tick: { color: colors.primaryText, fontSize: 13, fontWeight: '700', lineHeight: 15 },
   locked: { opacity: 0.6 },
   texts: { flex: 1, gap: 2 },
   label: { fontSize: 16, color: colors.text },

@@ -5,7 +5,7 @@ import { photoUrl } from '@/lib/avatars';
 import type { Profile } from '@/lib/types';
 
 import { Avatar } from './Avatar';
-import { colors } from './theme';
+import { colors, fonts, outlined } from './theme';
 
 // Обложка, фото и имя — вверху главного экрана и в личном кабинете.
 export function ProfileHeader({
@@ -18,10 +18,11 @@ export function ProfileHeader({
   children?: ReactNode;
 }) {
   const cover = photoUrl(profile.cover_path);
-  const accent = profile.accent_color ?? colors.primary;
+  // Цвет из кабинета; не выбран — спокойная серая обложка, без яркого пятна.
+  const accent = profile.accent_color;
   return (
     <View style={styles.card}>
-      <View style={[styles.cover, { backgroundColor: accent }]}>
+      <View style={[styles.cover, { backgroundColor: accent ?? colors.surfaceAlt }]}>
         {cover && <Image source={{ uri: cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
       </View>
       <View style={styles.body}>
@@ -45,15 +46,14 @@ export function ProfileHeader({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 22,
     overflow: 'hidden',
+    ...outlined,
   },
-  cover: { height: 130 },
+  cover: { height: 110 },
   body: { paddingHorizontal: 16, paddingBottom: 16, gap: 4 },
   avatar: { marginTop: -44, marginBottom: 4 },
-  name: { fontSize: 24, fontWeight: '700', color: colors.text },
+  name: { fontSize: 22, fontFamily: fonts.display, color: colors.text },
   muted: { fontSize: 15, color: colors.muted },
   bio: { fontSize: 15, color: colors.text, marginTop: 4 },
 });

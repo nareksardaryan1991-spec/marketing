@@ -3,11 +3,13 @@ import { ImageBackground, StyleSheet, View } from 'react-native';
 
 import { photoUrl } from '@/lib/avatars';
 
-import { WALLPAPERS } from './chatTheme';
+import { theme } from '../theme';
+
+import { chatColors, WALLPAPERS } from './chatTheme';
 import { PatternLayer } from './PatternLayer';
 
 export function wallpaperOf(value: string | null | undefined) {
-  if (value?.startsWith('photo:')) return { photo: photoUrl(value.slice(6)), color: '#2B3445', dark: true };
+  if (value?.startsWith('photo:')) return { photo: photoUrl(value.slice(6)), color: chatColors.placeholder, dark: theme.isDark };
   const preset = WALLPAPERS.find((w) => `preset:${w.id}` === value) ?? WALLPAPERS[0];
   return { photo: null, color: preset.color, dark: !!preset.dark };
 }

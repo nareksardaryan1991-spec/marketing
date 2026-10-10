@@ -157,6 +157,9 @@ export type Task = {
   created_by: string | null;
   // Проверяющий задачи команды (по умолчанию автор).
   reviewer_id?: string | null;
+  // Проект и теги задачи команды (миграция 0038).
+  project_id?: string | null;
+  tags?: string[];
   related_order_id: string | null;
   // «Передать человеку»: из какой работы AI-агента задача и какой агент делал черновик (миграция 0030).
   from_agent_run_id?: string | null;
@@ -174,6 +177,14 @@ export type Task = {
   client_review_since: string | null;
   created_at: string;
   updated_at: string;
+};
+
+// Проект задачи команды: клиент или направление работы. Заводит владелец (миграция 0038).
+export type TeamProject = {
+  id: string;
+  name: string;
+  archived: boolean;
+  created_at: string;
 };
 
 export type Deliverable = {

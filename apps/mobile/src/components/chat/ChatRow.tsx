@@ -13,6 +13,7 @@ import { formatDate } from '@/lib/format';
 import type { Language } from '@/lib/types';
 
 import { chatColors } from './chatTheme';
+import { colors, tints } from '@/components/theme';
 
 export function chatTitle(
   item: ChatListItem,
@@ -104,8 +105,8 @@ export function ChatRow({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 8 },
-  selected: { backgroundColor: '#E3EFFD' },
-  pressed: { backgroundColor: '#F1F3F7' },
+  selected: { backgroundColor: tints.accent.bg },
+  pressed: { backgroundColor: colors.surfaceAlt },
   onlineDot: {
     position: 'absolute',
     right: 1,
@@ -113,9 +114,9 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: '#22C55E',
+    backgroundColor: colors.primary,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: colors.background,
   },
   text: { flex: 1, minWidth: 0, gap: 3 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -135,5 +136,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  badgeText: { color: chatColors.accentText, fontSize: 12, fontWeight: '700' },
 });

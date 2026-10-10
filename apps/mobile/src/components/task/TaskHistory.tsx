@@ -5,9 +5,9 @@ import { useI18n } from '@/i18n';
 import { fileName } from '@/lib/files';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
+import { teamStage } from '@/lib/teamTasks';
 import type { TaskPriority, TaskStatus } from '@/lib/types';
 
-import { TEAM_STATUS } from '../TaskStatusBadge';
 import { colors } from '../theme';
 import { Card } from '../ui';
 import { taskStyles } from './styles';
@@ -65,10 +65,8 @@ export function TaskHistory({ taskId }: { taskId: string }) {
   const value = (field: string, v: unknown): string => {
     if (v === null || v === undefined || v === '') return '—';
     switch (field) {
-      case 'status': {
-        const key = TEAM_STATUS[v as TaskStatus];
-        return key ? t(`teamTasks.status.${key}`) : String(v);
-      }
+      case 'status':
+        return t(`teamTasks.status.${teamStage(v as TaskStatus)}`);
       case 'priority':
         return t(`teamTasks.priority.${v as TaskPriority}`);
       case 'due_date':
@@ -78,6 +76,8 @@ export function TaskHistory({ taskId }: { taskId: string }) {
         return person(v);
       case 'watchers':
         return (v as string[]).length ? (v as string[]).map(person).join(', ') : '—';
+      case 'tags':
+        return (v as string[]).length ? (v as string[]).map((tag) => `#${tag}`).join(' ') : '—';
       case 'attachments':
         return (v as string[]).length ? (v as string[]).map(fileName).join(', ') : '—';
       case 'related_order_id':
