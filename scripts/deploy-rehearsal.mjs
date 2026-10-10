@@ -2,12 +2,12 @@
 // Перед новой выкладкой поменять FIRST на первую ещё не выложенную миграцию и проверки под неё.
 // Репетиция выкладки: база как на сервере (миграции до FIRST) + настоящие данные из копии,
 // затем новые миграции и сверка. Печатает только числа и ошибки — не содержимое данных.
-// Сейчас: групповые чаты, 0036–0037.
+// Сейчас: трекер задач команды, 0038–0039 (на сервере до 0037).
 import { PGlite } from '/home/narek/Documents/marketing/supabase/tests/node_modules/@electric-sql/pglite/dist/index.js';
 import fs from 'node:fs';
 
 const MIG = '/home/narek/Documents/marketing/supabase/migrations/';
-const FIRST = '0036';
+const FIRST = '0038';
 const DATA = process.argv[2];
 const db = new PGlite();
 const say = (...a) => console.log(...a);
